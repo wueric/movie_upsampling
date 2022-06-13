@@ -100,7 +100,7 @@ ContigNPArray<float> temporal_upsample_transpose_movie(
 
     // allocate memory for the upsampled movie
     auto upsampled_movie_info = py::buffer_info(
-            null_ptr,
+            nullptr,
             sizeof(float),
             py::format_descriptor<float>::value,
             3, /* How many dimensions */
