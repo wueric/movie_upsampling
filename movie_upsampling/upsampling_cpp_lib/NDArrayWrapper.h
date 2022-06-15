@@ -329,9 +329,9 @@ namespace CNDArrayWrapper {
     struct NDRawArrayWrapper {
         T *array_ptr;
         const std::array<int64_t, N> shape;
-        const std::array<int64_t, N> stride;
+        std::array<int64_t, N> stride;
 
-        NDRawArrayWrapper<T>(T *ptr, std::array<int64_t, N> _shape) : array_ptr(ptr), shape(_shape) {
+        NDRawArrayWrapper<T, N>(T *ptr, std::array<int64_t, N> _shape) : array_ptr(ptr), shape(_shape) {
 
             int64_t acc_stride = 1;
             for (size_t i = N - 1; i >= 0; --i) {
