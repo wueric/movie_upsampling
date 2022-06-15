@@ -334,7 +334,7 @@ namespace CNDArrayWrapper {
         NDRawArrayWrapper<T, N>(T *ptr, std::array<int64_t, N> _shape) : array_ptr(ptr), shape(_shape) {
 
             int64_t acc_stride = 1;
-            for (size_t i = N - 1; i >= 0; --i) {
+            for (int64_t i = N - 1; i >= 0; --i) {
                 stride[i] = acc_stride;
                 acc_stride = acc_stride * _shape[i];
             }
