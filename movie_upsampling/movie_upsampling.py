@@ -14,6 +14,6 @@ def upsample_transpose_movie(movie_frames: np.ndarray,
     :return: shape (height, width, n_bins)
     '''
 
-    return movie_upsampling_cpplib.temporal_upsample_transpose_movie(
+    return upsampling_cpp_lib.temporal_upsample_transpose_movie(
         movie_frames, movie_cutoff_times, spike_bin_cutoff_times
     )

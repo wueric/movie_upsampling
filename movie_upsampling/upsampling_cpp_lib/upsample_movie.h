@@ -143,7 +143,7 @@ ContigNPArray<float> temporal_upsample_transpose_movie(
 
         int64_t frame_high = frame_low - 1;
         while (frame_high < (n_frames - 1) && movie_bin_wrapper.valueAt(frame_high + 1) < high) {
-            frame_high += 1;
+            ++frame_high;
 
             float curr_frame_start = movie_bin_wrapper.valueAt(frame_high);
             float curr_frame_end = movie_bin_wrapper.valueAt(frame_high + 1);
