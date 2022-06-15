@@ -109,6 +109,7 @@ ContigNPArray<float> temporal_upsample_transpose_movie(
     );
 
     ContigNPArray<float> upsampled_movie = ContigNPArray<float>(upsampled_movie_info);
+    memset(upsampled_movie.request().ptr, 0, height * width * n_bins * sizeof(float));
 
     // and also make a wrapper for the upsampled movie
     CNDArrayWrapper::StaticNDArrayWrapper<float, 3> upsampled_wrapper(
@@ -116,18 +117,14 @@ ContigNPArray<float> temporal_upsample_transpose_movie(
             {height, width, n_bins}
     );
 
-    // allocate a temporary buffer on the heap
-    auto *accum_buffer = new float[height * width];
-    CNDArrayWrapper::StaticNDArrayWrapper<float, 2> accum_buffer_wrapper(
-            accum_buffer,
-            {height, width}
-    );
-    zero_2D_buffer(accum_buffer_wrapper);
-
     int64_t frame_idx = 0;
     for (int64_t us_idx = 0; us_idx < n_bins; ++us_idx) {
 
-        zero_2D_buffer(accum_buffer_wrapper);
+        CNDArrayWrapper::StaticNDArrayWrapper<float, 2> upsampled_slice_wrapper = upsampled_wrapper.slice<2>(
+                CNDArrayWrapper::makeAllSlice(),
+                CNDArrayWrapper::makeAllSlice(),
+                CNDArrayWrapper::makeIdxSlice(us_idx)
+        );
 
         float low = spike_bin_wrapper.valueAt(us_idx);
         float high = spike_bin_wrapper.valueAt(us_idx + 1);
@@ -149,7 +146,6 @@ ContigNPArray<float> temporal_upsample_transpose_movie(
             float curr_frame_end = movie_bin_wrapper.valueAt(frame_high + 1);
 
             float interval_overlap = std::min(curr_frame_end, high) - std::max(curr_frame_start, low);
-            float overlap_fraction = interval_overlap / bin_width;
 
             CNDArrayWrapper::StaticNDArrayWrapper<uint8_t, 2> frame_slice_wrapper = movie_frame_wrapper.slice<2>(
                     CNDArrayWrapper::makeIdxSlice(frame_high),
@@ -157,24 +153,30 @@ ContigNPArray<float> temporal_upsample_transpose_movie(
                     CNDArrayWrapper::makeAllSlice()
             );
 
-            multiply_accumulate_2D_buffer<float, uint8_t>(accum_buffer_wrapper,
-                                                          frame_slice_wrapper,
-                                                          overlap_fraction);
+            /*
+             * For fast performance, we should avoid doing the multiplication where possible and just copy memory
+             * in the case that the current spike time bin is covered by only 1 frame.
+             * There are two cases, either (a) interval_overlap < bin_width, OR (b) interval_overlap = bin_width
+             *
+             * Implementation below is very sketchy but probably correct; see if we can find a better
+             * way to do the copy outside of the loop
+             */
+
+            if (interval_overlap < bin_width) {
+                float overlap_fraction = interval_overlap / bin_width;
+                multiply_accumulate_2D_buffer<float, uint8_t>(upsampled_slice_wrapper,
+                                                              frame_slice_wrapper,
+                                                              overlap_fraction);
+
+            } else {
+                copy_2D_buffer<float, uint8_t>(upsampled_slice_wrapper,
+                                               frame_slice_wrapper);
+                break;
+            }
         }
 
         frame_idx = frame_high;
-
-        // now copy the values over
-        CNDArrayWrapper::StaticNDArrayWrapper<float, 2> upsampled_slice_wrapper = upsampled_wrapper.slice<2>(
-                CNDArrayWrapper::makeAllSlice(),
-                CNDArrayWrapper::makeAllSlice(),
-                CNDArrayWrapper::makeIdxSlice(us_idx)
-        );
-        copy_2D_buffer<float, float>(upsampled_slice_wrapper, accum_buffer_wrapper);
     }
-
-    // remember to clean up the temporary buffer
-    delete[] accum_buffer;
 
     return upsampled_movie;
 }
