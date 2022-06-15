@@ -5,12 +5,12 @@
 #include <cuda.h>
 #include <cuda_runtime.h>
 
-template <typename scalar_t>
+template<typename scalar_t>
 __global__ void sparse_time_domain_movie_upsample_kernel(
-        const torch::PackedTensorAccessor<scalar_t,3,torch::RestrictPtrTraits,size_t> movie_frames,
-        torch::PackedTensorAccessor<scalar_t,3,torch::RestrictPtrTraits,size_t> us_dest,
-        const torch::PackedTensorAccessor<int64_t,2,torch::RestrictPtrTraits,size_t> frame_selection,
-        const torch::PackedTensorAccessor<scalar_t,2,torch::RestrictPtrTraits,size_t> frame_weights) {
+        const torch::PackedTensorAccessor<scalar_t, 3, torch::RestrictPtrTraits, size_t> movie_frames,
+        torch::PackedTensorAccessor<scalar_t, 3, torch::RestrictPtrTraits, size_t> us_dest,
+        const torch::PackedTensorAccessor<int64_t, 2, torch::RestrictPtrTraits, size_t> frame_selection,
+        const torch::PackedTensorAccessor<scalar_t, 2, torch::RestrictPtrTraits, size_t> frame_weights) {
 
     const int64_t index = blockIdx.x * blockDim.x + threadIdx.x;
     const int64_t stride = blockDim.x * gridDim.x;
@@ -54,10 +54,10 @@ torch::Tensor upsample_sparse_movie_cuda(torch::Tensor movie_frames,
     int64_t height = movie_frames.size(1);
     int64_t width = movie_frames.size(2);
 
-    auto options =torch::TensorOptions()
-	          .dtype(frame_weights.dtype())
-		  .layout(torch::kStrided)
-		  .device(movie_frames.device());
+    auto options = torch::TensorOptions()
+            .dtype(frame_weights.dtype())
+            .layout(torch::kStrided)
+            .device(movie_frames.device());
 
     torch::Tensor dest = torch::empty(std::vector<int64_t>({n_bins, height, width}), options);
 
@@ -65,11 +65,11 @@ torch::Tensor upsample_sparse_movie_cuda(torch::Tensor movie_frames,
     const int64_t blocks = (n_bins + threads - 1) / threads;
 
     AT_DISPATCH_FLOATING_TYPES(dest.scalar_type(), "sparse_upsample_movie", ([&] {
-        sparse_time_domain_movie_upsample_kernel <scalar_t><<<blocks, threads>>>(
-            movie_frames.packed_accessor<scalar_t,3,torch::RestrictPtrTraits,size_t>(),
-	    dest.packed_accessor<scalar_t,3,torch::RestrictPtrTraits,size_t>(),
-	    frame_selection.packed_accessor<int64_t,2,torch::RestrictPtrTraits,size_t>(),
-	    frame_weights.packed_accessor<scalar_t,2,torch::RestrictPtrTraits,size_t>())
+        sparse_time_domain_movie_upsample_kernel<scalar_t><<<blocks, threads>>>(
+                movie_frames.packed_accessor<scalar_t, 3, torch::RestrictPtrTraits, size_t>(),
+                dest.packed_accessor<scalar_t, 3, torch::RestrictPtrTraits, size_t>(),
+                frame_selection.packed_accessor<int64_t, 2, torch::RestrictPtrTraits, size_t>(),
+                frame_weights.packed_accessor<scalar_t, 2, torch::RestrictPtrTraits, size_t>())
     }));
 
     return dest;
