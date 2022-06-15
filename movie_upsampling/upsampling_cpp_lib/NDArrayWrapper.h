@@ -128,33 +128,33 @@ namespace CNDArrayWrapper {
         bool is_singledim() const { return false; };
     };
 
-    std::shared_ptr <Slice> makeRangeSlice(int64_t low, int64_t high, int64_t step) {
+    std::shared_ptr<Slice> makeRangeSlice(int64_t low, int64_t high, int64_t step) {
         return std::make_shared<RangeSlice>(low, high, step);
     };
 
-    std::shared_ptr <Slice> makeRangeSlice(int64_t low, int64_t high) {
+    std::shared_ptr<Slice> makeRangeSlice(int64_t low, int64_t high) {
         return std::make_shared<RangeSlice>(low, high);
     };
 
-    std::shared_ptr <Slice> makeIdxSlice(int64_t idx) {
+    std::shared_ptr<Slice> makeIdxSlice(int64_t idx) {
         return std::make_shared<IdxSlice>(idx);
     };
 
-    std::shared_ptr <Slice> makeInferredSlice(int64_t low, int64_t step) {
+    std::shared_ptr<Slice> makeInferredSlice(int64_t low, int64_t step) {
         return std::make_shared<InferredSlice>(low, step);
     };
 
-    std::shared_ptr <Slice> makeInferredSlice(int64_t low) {
+    std::shared_ptr<Slice> makeInferredSlice(int64_t low) {
         return std::make_shared<InferredSlice>(low);
     };
 
-    std::shared_ptr <Slice> makeAllSlice() {
+    std::shared_ptr<Slice> makeAllSlice() {
         return std::make_shared<InferredSlice>();
     };
 
     template<uint8_t N>
-    std::array <int64_t, N> _auto_stride(std::array <int64_t, N> dim) {
-        auto x = std::array < int64_t, N>{};
+    std::array<int64_t, N> _auto_stride(std::array<int64_t, N> dim) {
+        auto x = std::array<int64_t, N>{};
         int64_t stride = 1;
         for (int64_t i = N - 1; i >= 0; --i) {
             x[i] = stride;
@@ -169,18 +169,18 @@ namespace CNDArrayWrapper {
 
     public:
         T *const base_ptr;
-        const std::array <int64_t, N> shape;
-        const std::array <int64_t, N> stride;
+        const std::array<int64_t, N> shape;
+        const std::array<int64_t, N> stride;
 
         StaticNDArrayWrapper<T, N>(
                 T *_base_ptr,
-                std::array <int64_t, N> _shape,
-                std::array <int64_t, N> _stride) : base_ptr(_base_ptr), shape(_shape), stride(_stride) {};
+                std::array<int64_t, N> _shape,
+                std::array<int64_t, N> _stride) : base_ptr(_base_ptr), shape(_shape), stride(_stride) {};
 
         StaticNDArrayWrapper<T, N>(
                 T *_base_ptr,
-                std::array <int64_t, N> _shape) : base_ptr(_base_ptr), shape(_shape),
-                                                  stride(_auto_stride<N>(_shape)) {};
+                std::array<int64_t, N> _shape) : base_ptr(_base_ptr), shape(_shape),
+                                                 stride(_auto_stride<N>(_shape)) {};
 
         std::string generate_shape_str() const {
 
@@ -203,7 +203,7 @@ namespace CNDArrayWrapper {
         int64_t computeOffset(Ix... ix) const {
             static_assert(sizeof...(ix) == N, "N-dim StaticNDArrayWrapper must be indexed by N indices");
 
-            auto indices = std::array < int64_t, N>{{ ix... }};
+            auto indices = std::array<int64_t, N>{{ix...}};
 
             int64_t offset = 0;
             for (size_t i = 0; i < N; ++i) {
@@ -238,9 +238,9 @@ namespace CNDArrayWrapper {
 
             // then need to compute the new shapes and strides
 
-            auto slices = std::array < std::shared_ptr < Slice >, N>{{ sl... }};
-            std::array <int64_t, M> output_shapes{};
-            std::array <int64_t, M> output_strides{};
+            auto slices = std::array<std::shared_ptr<Slice>, N>{{sl...}};
+            std::array<int64_t, M> output_shapes{};
+            std::array<int64_t, M> output_strides{};
 
             // Logic for figuring out the output shape and stride
             //  Loop over the Slice objects in reverse order (from last index to first index)
@@ -321,6 +321,45 @@ namespace CNDArrayWrapper {
 
         inline T *addressIx(int64_t ix0, int64_t ix1, int64_t ix2) {
             return array_ptr + ix0 * dim1 * dim2 + ix1 * dim2 + ix2;
+        }
+
+    };
+
+    template<typename T, size_t N>
+    struct NDRawArrayWrapper {
+        T *array_ptr;
+        const std::array<int64_t, N> shape;
+        const std::array<int64_t, N> stride;
+
+        NDRawArrayWrapper<T>(T *ptr, std::array<int64_t, N> _shape) : array_ptr(ptr), shape(_shape) {
+
+            int64_t acc_stride = 1;
+            for (size_t i = N - 1; i >= 0; --i) {
+                stride[i] = acc_stride;
+                acc_stride = acc_stride * _shape[i];
+            }
+        };
+
+        template<typename... Ix>
+        inline T valueAt(Ix... ix) {
+            return *(addressIx(ix...));
+        }
+
+        template<typename... Ix>
+        inline void storeTo(T val, Ix... ix) {
+            *(addressIx(ix...)) = val;
+        }
+
+        template<typename... Ix>
+        T *addressIx(Ix... ix) const {
+            static_assert(sizeof...(ix) == N, "N-dim NDRawArrayWrapper must be indexed by N indices");
+            auto indices = std::array<int64_t, N>{{ix...}};
+
+            int64_t offset = 0;
+            for (size_t i = 0; i < N; ++i) {
+                offset += stride[i] * indices[i];
+            }
+            return array_ptr + offset;
         }
 
     };

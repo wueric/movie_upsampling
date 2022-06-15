@@ -10,10 +10,10 @@
 PYBIND11_MODULE(upsampling_cpp_lib, m) {
 m.doc() = "Fast temporal moving upsampling"; // optional module docstring
 
-m.def("temporal_upsample_transpose_movie",
+m.def("compute_interval_overlaps",
 &temporal_upsample_transpose_movie,
 pybind11::return_value_policy::take_ownership,
-"Function that upsamples movie and transposes the time axis");
+"Computes interval overlaps");
 
 }
 

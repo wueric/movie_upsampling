@@ -5,6 +5,8 @@
 #ifndef MOVIE_UPSAMPLING_UPSAMPLE_MOVIE_H
 #define MOVIE_UPSAMPLING_UPSAMPLE_MOVIE_H
 
+#define INVALID_FRAME -1
+
 #include <pybind11/numpy.h>
 #include <pybind11/stl.h>
 
@@ -12,6 +14,7 @@
 #include <cstdint>
 #include <queue>
 #include <memory>
+#include <tuple>
 
 #include "NDArrayWrapper.h"
 
@@ -63,71 +66,19 @@ void zero_2D_buffer(CNDArrayWrapper::StaticNDArrayWrapper<T, 2> &buffer) {
     }
 }
 
-ContigNPArray<float> temporal_upsample_transpose_movie(
-        ContigNPArray<uint8_t> movie_frames,
-        ContigNPArray<float> movie_bin_cutoffs,
-        ContigNPArray<float> spike_bin_cutoffs) {
 
-    py::buffer_info movie_frame_info = movie_frames.request();
-    auto *movie_frame_ptr = static_cast<uint8_t *>(movie_frame_info.ptr);
-    const int64_t n_frames = movie_frame_info.shape[0];
-    const int64_t height = movie_frame_info.shape[1];
-    const int64_t width = movie_frame_info.shape[2];
+void _compute_interval_overlaps(CNDArrayWrapper::NDRawArrayWrapper<float, 1> movie_bin_cutoffs,
+                               CNDArrayWrapper::NDRawArrayWrapper<float, 1> spike_bin_cutoffs,
+                               CNDArrayWrapper::NDRawArrayWrapper<int64_t, 2> output_overlaps,
+                               CNDArrayWrapper::NDRawArrayWrapper<float, 2> frame_weights) {
 
-    CNDArrayWrapper::StaticNDArrayWrapper<uint8_t, 3> movie_frame_wrapper(
-            movie_frame_ptr,
-            {n_frames, height, width}
-    );
-
-    py::buffer_info spike_bin_info = spike_bin_cutoffs.request();
-    auto *spike_bin_ptr = static_cast<float *>(spike_bin_info.ptr);
-    const int64_t n_bin_cutoffs = spike_bin_info.shape[0];
-    const int64_t n_bins = n_bin_cutoffs - 1;
-
-    CNDArrayWrapper::StaticNDArrayWrapper<float, 1> spike_bin_wrapper(
-            spike_bin_ptr,
-            {n_bin_cutoffs}
-    );
-
-    py::buffer_info movie_bin_info = movie_bin_cutoffs.request();
-    auto *movie_bin_ptr = static_cast<float *>(movie_bin_info.ptr);
-    const int64_t n_frame_cutoffs = movie_bin_info.shape[0];
-
-    CNDArrayWrapper::StaticNDArrayWrapper<float, 1> movie_bin_wrapper(
-            movie_bin_ptr,
-            {n_frame_cutoffs}
-    );
-
-    // allocate memory for the upsampled movie
-    auto upsampled_movie_info = py::buffer_info(
-            nullptr,
-            sizeof(float),
-            py::format_descriptor<float>::value,
-            3, /* How many dimensions */
-            {n_bins, height, width}, /* shape */
-            {sizeof(float) * height * width, sizeof(float) * width, sizeof(float)} /* stride */
-    );
-
-    ContigNPArray<float> upsampled_movie = ContigNPArray<float>(upsampled_movie_info);
-    //memset(upsampled_movie.request().ptr, 0, height * width * n_bins * sizeof(float));
-
-    // and also make a wrapper for the upsampled movie
-    CNDArrayWrapper::StaticNDArrayWrapper<float, 3> upsampled_wrapper(
-            static_cast<float *>(upsampled_movie.request().ptr),
-            {n_bins, height, width}
-    );
+    int64_t n_spike_bins = spike_bin_cutoffs.shape[0] - 1;
+    int64_t n_frames = movie_bin_cutoffs.shape[0] - 1;
 
     int64_t frame_idx = 0;
-    for (int64_t us_idx = 0; us_idx < n_bins; ++us_idx) {
-
-        CNDArrayWrapper::StaticNDArrayWrapper<float, 2> upsampled_slice_wrapper = upsampled_wrapper.slice<2>(
-                CNDArrayWrapper::makeIdxSlice(us_idx),
-                CNDArrayWrapper::makeAllSlice(),
-                CNDArrayWrapper::makeAllSlice()
-        );
-
-        float low = spike_bin_wrapper.valueAt(us_idx);
-        float high = spike_bin_wrapper.valueAt(us_idx + 1);
+    for (int64_t us_idx = 0; us_idx < n_spike_bins; ++us_idx) {
+        float low = spike_bin_cutoffs.valueAt(us_idx);
+        float high = spike_bin_cutoffs.valueAt(us_idx + 1);
         float bin_width = high - low;
 
         /* Determine which movie frames this interval overlaps with
@@ -136,50 +87,89 @@ ContigNPArray<float> temporal_upsample_transpose_movie(
          * movie frames
          */
         int64_t frame_low = frame_idx;
-        while (frame_low < n_frames && movie_bin_wrapper.valueAt(frame_low + 1) < low) ++frame_low;
+        while (frame_low < n_frames && movie_bin_cutoffs.valueAt(frame_low + 1) < low) ++frame_low;
 
-        int64_t frame_high = frame_low - 1;
-        while (frame_high < (n_frames - 1) && movie_bin_wrapper.valueAt(frame_high + 1) < high) {
+        int64_t frame_high = frame_low;
+        float curr_frame_start = movie_bin_cutoffs.valueAt(frame_high);
+        float curr_frame_end = movie_bin_cutoffs.valueAt(frame_high + 1);
+
+        if (curr_frame_start <= low && curr_frame_end >= high) {
+            output_overlaps.storeTo(frame_high, us_idx, 0);
+            frame_weights.storeTo(1.0, us_idx, 0);
+
+            output_overlaps.storeTo(INVALID_FRAME, us_idx, 1);
+            frame_weights.storeTo(0.0, us_idx, 1);
+
+            frame_idx = frame_high;
+        } else {
+
+            float interval_overlap = (std::min(curr_frame_end, high) - std::max(curr_frame_start, low)) / bin_width;
+            output_overlaps.storeTo(frame_high, us_idx, 0);
+            frame_weights.storeTo(interval_overlap, us_idx, 0);
+
             ++frame_high;
+            curr_frame_start = movie_bin_cutoffs.valueAt(frame_high);
+            curr_frame_end = movie_bin_cutoffs.valueAt(frame_high + 1);
+            interval_overlap = (std::min(curr_frame_end, high) - std::max(curr_frame_start, low)) / bin_width;
+            output_overlaps.storeTo(frame_high, us_idx, 1);
+            frame_weights.storeTo(interval_overlap, us_idx, 1);
 
-            float curr_frame_start = movie_bin_wrapper.valueAt(frame_high);
-            float curr_frame_end = movie_bin_wrapper.valueAt(frame_high + 1);
-
-            float interval_overlap = std::min(curr_frame_end, high) - std::max(curr_frame_start, low);
-
-            CNDArrayWrapper::StaticNDArrayWrapper<uint8_t, 2> frame_slice_wrapper = movie_frame_wrapper.slice<2>(
-                    CNDArrayWrapper::makeIdxSlice(frame_high),
-                    CNDArrayWrapper::makeAllSlice(),
-                    CNDArrayWrapper::makeAllSlice()
-            );
-
-            /*
-             * For fast performance, we should avoid doing the multiplication where possible and just copy memory
-             * in the case that the current spike time bin is covered by only 1 frame.
-             * There are two cases, either (a) interval_overlap < bin_width, OR (b) interval_overlap = bin_width
-             *
-             * Implementation below is very sketchy but probably correct; see if we can find a better
-             * way to do the copy outside of the loop
-             */
-
-
-            if (interval_overlap < bin_width) {
-                float overlap_fraction = interval_overlap / bin_width;
-                multiply_accumulate_2D_buffer<float, uint8_t>(upsampled_slice_wrapper,
-                                                              frame_slice_wrapper,
-                                                              overlap_fraction);
-
-            } else {
-                copy_2D_buffer<float, uint8_t>(upsampled_slice_wrapper,
-                                               frame_slice_wrapper);
-                break;
-            }
+            frame_idx = frame_high;
         }
-
-        frame_idx = frame_high;
     }
+}
 
-    return upsampled_movie;
+std::tuple<ContigNPArray<int64_t>, ContigNPArray<float>> compute_interval_overlaps(
+        ContigNPArray<float> movie_bin_cutoffs,
+        ContigNPArray<float> spike_bin_cutoffs) {
+
+    py::buffer_info movie_bin_info = movie_bin_cutoffs.request();
+    auto *movie_bin_ptr = static_cast<float *>(movie_bin_info.ptr);
+    const int64_t n_frame_cutoffs = movie_bin_info.shape[0];
+
+    CNDArrayWrapper::NDRawArrayWrapper<float, 1> movie_bin_wrapper(
+            movie_bin_ptr,
+            {n_frame_cutoffs});
+
+    py::buffer_info spike_bin_info = spike_bin_cutoffs.request();
+    auto *spike_bin_ptr = static_cast<float *>(spike_bin_info.ptr);
+    const int64_t n_bin_cutoffs = spike_bin_info.shape[0];
+    const int64_t n_bins = n_bin_cutoffs - 1;
+
+    CNDArrayWrapper::NDRawArrayWrapper<float, 1> spike_bin_wrapper(
+            spike_bin_ptr,
+            {n_bin_cutoffs});
+
+    auto frame_weight_info = py::buffer_info(
+            nullptr,
+            sizeof(float),
+            py::format_descriptor<R>::value,
+            2, /* How many dimensions */
+            {n_bins, 2}, /* shape */
+            {sizeof(float) * 2, sizeof(float)} /* stride */
+    );
+    ContigNPArray<float> frame_weights = ContigNPArray<float>(frame_weight_info);
+    CNDArrayWrapper::NDRawArrayWrapper<float, 2> frame_weight_wrapper(static_cast<float *>(frame_weights.request().ptr),
+                                                                      {n_bins, 2});
+
+    auto frame_idx_info = py::buffer_info(
+            nullptr,
+            sizeof(int64_t),
+            py::format_descriptor<R>::value,
+            2, /* How many dimensions */
+            {n_bins, 2}, /* shape */
+            {sizeof(int64_t) * 2, sizeof(int64_t)} /* stride */
+    );
+    ContigNPArray<int64_t> frame_ix = ContigNPArray<int64_t>(frame_idx_info);
+    CNDArrayWrapper::NDRawArrayWrapper<int64_t, 2> frame_ix_wrapper(static_cast<int64_t>(frame_ix.request().ptr),
+                                                                    {n_bins, 2});
+
+    _compute_interval_overlaps(movie_bin_wrapper,
+                               spike_bin_wrapper,
+                               frame_ix_wrapper,
+                               frame_weight_wrapper);
+
+    return std::make_pair(frame_weights, frame_ix);
 }
 
 
