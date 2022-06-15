@@ -22,51 +22,8 @@ namespace py = pybind11;
 template<class T>
 using ContigNPArray = py::array_t<T, py::array::c_style | py::array::forcecast>;
 
-template<typename T, typename U>
-void multiply_accumulate_2D_buffer(CNDArrayWrapper::StaticNDArrayWrapper<T, 2> &buffer,
-                                   CNDArrayWrapper::StaticNDArrayWrapper<U, 2> &read_from,
-                                   T mul_by) {
 
-    int64_t n_rows = buffer.shape[0];
-    int64_t n_cols = buffer.shape[1];
-
-    for (int64_t i = 0; i < n_rows; ++i) {
-        for (int64_t j = 0; j < n_cols; ++j) {
-            T write_val = mul_by * (static_cast<T> (read_from.template valueAt(i, j)));
-            buffer.storeTo(write_val, i, j);
-        }
-    }
-}
-
-template<typename T, typename U>
-void copy_2D_buffer(CNDArrayWrapper::StaticNDArrayWrapper<T, 2> &buffer,
-                    CNDArrayWrapper::StaticNDArrayWrapper<U, 2> &copy_from) {
-
-    int64_t n_rows = buffer.shape[0];
-    int64_t n_cols = buffer.shape[1];
-
-    for (int64_t i = 0; i < n_rows; ++i) {
-        for (int64_t j = 0; j < n_cols; ++j) {
-            T write_val = static_cast<T>(copy_from.template valueAt(i, j));
-            buffer.storeTo(write_val, i, j);
-        }
-    }
-}
-
-template<typename T>
-void zero_2D_buffer(CNDArrayWrapper::StaticNDArrayWrapper<T, 2> &buffer) {
-    int64_t n_rows = buffer.shape[0];
-    int64_t n_cols = buffer.shape[1];
-
-    for (int64_t i = 0; i < n_rows; ++i) {
-        for (int64_t j = 0; j < n_cols; ++j) {
-            buffer.storeTo(0, i, j);
-        }
-    }
-}
-
-
-void _compute_interval_overlaps(CNDArrayWrapper::NDRawArrayWrapper<float, 1> movie_bin_cutoffs,
+void _raw_compute_interval_overlaps(CNDArrayWrapper::NDRawArrayWrapper<float, 1> movie_bin_cutoffs,
                                CNDArrayWrapper::NDRawArrayWrapper<float, 1> spike_bin_cutoffs,
                                CNDArrayWrapper::NDRawArrayWrapper<int64_t, 2> output_overlaps,
                                CNDArrayWrapper::NDRawArrayWrapper<float, 2> frame_weights) {
@@ -118,7 +75,8 @@ void _compute_interval_overlaps(CNDArrayWrapper::NDRawArrayWrapper<float, 1> mov
     }
 }
 
-std::tuple<ContigNPArray<int64_t>, ContigNPArray<float>> compute_interval_overlaps(
+
+std::tuple<ContigNPArray<int64_t>, ContigNPArray<float>> _compute_interval_overlaps(
         ContigNPArray<float> movie_bin_cutoffs,
         ContigNPArray<float> spike_bin_cutoffs) {
 
@@ -144,8 +102,8 @@ std::tuple<ContigNPArray<int64_t>, ContigNPArray<float>> compute_interval_overla
             sizeof(float),
             py::format_descriptor<float>::value,
             2, /* How many dimensions */
-            std::vector<py::ssize_t>({static_cast<py::ssize_t>(n_bins), static_cast<py::ssize_t>(2)}), /* shape */
-            std::vector<py::ssize_t>({static_cast<py::ssize_t>(sizeof(float) * 2), static_cast<py::ssize_t>(sizeof(float))}) /* stride */
+	    {static_cast<py::ssize_t>(n_bins), static_cast<py::ssize_t>(2)}, /* shape */
+	    {static_cast<py::ssize_t>(2 * sizeof(float)), static_cast<py::ssize_t>(sizeof(float))} /* stride */
     );
     ContigNPArray<float> frame_weights = ContigNPArray<float>(frame_weight_info);
     CNDArrayWrapper::NDRawArrayWrapper<float, 2> frame_weight_wrapper(static_cast<float *>(frame_weights.request().ptr),
@@ -156,19 +114,20 @@ std::tuple<ContigNPArray<int64_t>, ContigNPArray<float>> compute_interval_overla
             sizeof(int64_t),
             py::format_descriptor<int64_t>::value,
             2, /* How many dimensions */
-            std::vector<py::ssize_t>({static_cast<py::ssize_t>(n_bins), static_cast<py::ssize_t>(2)}), /* shape */
-            std::vector<py::ssize_t>({static_cast<py::ssize_t>(sizeof(int64_t) * 2), static_cast<py::ssize_t>(sizeof(int64_t))}) /* stride */
+	    {static_cast<py::ssize_t>(n_bins), static_cast<py::ssize_t>(2)}, /* shape */
+	    {static_cast<py::ssize_t>(2 * sizeof(int64_t)), static_cast<py::ssize_t>(sizeof(int64_t))} /* stride */
     );
     ContigNPArray<int64_t> frame_ix = ContigNPArray<int64_t>(frame_idx_info);
     CNDArrayWrapper::NDRawArrayWrapper<int64_t, 2> frame_ix_wrapper(static_cast<int64_t *>(frame_ix.request().ptr),
                                                                     std::array<int64_t, 2>({n_bins, 2}));
 
-    _compute_interval_overlaps(movie_bin_wrapper,
+    _raw_compute_interval_overlaps(movie_bin_wrapper,
                                spike_bin_wrapper,
                                frame_ix_wrapper,
                                frame_weight_wrapper);
 
-    return std::make_pair(frame_weights, frame_ix);
+    return std::make_pair(frame_ix, frame_weights);
+
 }
 
 

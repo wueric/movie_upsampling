@@ -12,6 +12,7 @@ def compute_interval_overlaps(movie_cutoff_times: np.ndarray,
     :return: shape (height, width, n_bins)
     '''
 
-    return upsampling_cpp_lib.compute_interval_overlaps(
+    print(movie_cutoff_times.shape, movie_cutoff_times.ndim, spike_bin_cutoff_times.shape)
+    return upsampling_cpp_lib._compute_interval_overlaps(
         movie_cutoff_times, spike_bin_cutoff_times
     )
