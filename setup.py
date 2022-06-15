@@ -1,5 +1,6 @@
 from setuptools import setup, Extension
 from setuptools.command.build_ext import build_ext
+from torch.utils.cpp_extension import BuildExtension, CUDAExtension
 import sys
 import setuptools
 
@@ -85,6 +86,7 @@ class BuildExt(build_ext):
 
         build_ext.build_extensions(self)
 
+
 ext_modules = [
     Extension(
         'movie_upsampling.upsampling_cpp_lib',
@@ -113,3 +115,14 @@ setup(
     zip_safe=False,
 )
 
+setup(
+    name='torch_sparse_upsample',
+    ext_modules=[
+        CUDAExtension('torch_sparse_upsample_cuda', [
+            'upsample_cuda.cpp',
+            'upsampling.cu',
+        ])
+    ],
+    cmdclass={
+        'build_ext': BuildExtension
+    })

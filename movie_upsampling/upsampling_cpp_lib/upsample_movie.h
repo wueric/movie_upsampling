@@ -24,9 +24,9 @@ using ContigNPArray = py::array_t<T, py::array::c_style | py::array::forcecast>;
 
 
 void _raw_compute_interval_overlaps(CNDArrayWrapper::NDRawArrayWrapper<float, 1> movie_bin_cutoffs,
-                               CNDArrayWrapper::NDRawArrayWrapper<float, 1> spike_bin_cutoffs,
-                               CNDArrayWrapper::NDRawArrayWrapper<int64_t, 2> output_overlaps,
-                               CNDArrayWrapper::NDRawArrayWrapper<float, 2> frame_weights) {
+                                    CNDArrayWrapper::NDRawArrayWrapper<float, 1> spike_bin_cutoffs,
+                                    CNDArrayWrapper::NDRawArrayWrapper<int64_t, 2> output_overlaps,
+                                    CNDArrayWrapper::NDRawArrayWrapper<float, 2> frame_weights) {
 
     int64_t n_spike_bins = spike_bin_cutoffs.shape[0] - 1;
     int64_t n_frames = movie_bin_cutoffs.shape[0] - 1;
@@ -76,7 +76,7 @@ void _raw_compute_interval_overlaps(CNDArrayWrapper::NDRawArrayWrapper<float, 1>
 }
 
 
-std::tuple<ContigNPArray<int64_t>, ContigNPArray<float>> _compute_interval_overlaps(
+std::tuple <ContigNPArray<int64_t>, ContigNPArray<float>> _compute_interval_overlaps(
         ContigNPArray<float> movie_bin_cutoffs,
         ContigNPArray<float> spike_bin_cutoffs) {
 
@@ -102,8 +102,8 @@ std::tuple<ContigNPArray<int64_t>, ContigNPArray<float>> _compute_interval_overl
             sizeof(float),
             py::format_descriptor<float>::value,
             2, /* How many dimensions */
-	    {static_cast<py::ssize_t>(n_bins), static_cast<py::ssize_t>(2)}, /* shape */
-	    {static_cast<py::ssize_t>(2 * sizeof(float)), static_cast<py::ssize_t>(sizeof(float))} /* stride */
+            {static_cast<py::ssize_t>(n_bins), static_cast<py::ssize_t>(2)}, /* shape */
+            {static_cast<py::ssize_t>(2 * sizeof(float)), static_cast<py::ssize_t>(sizeof(float))} /* stride */
     );
     ContigNPArray<float> frame_weights = ContigNPArray<float>(frame_weight_info);
     CNDArrayWrapper::NDRawArrayWrapper<float, 2> frame_weight_wrapper(static_cast<float *>(frame_weights.request().ptr),
@@ -114,21 +114,20 @@ std::tuple<ContigNPArray<int64_t>, ContigNPArray<float>> _compute_interval_overl
             sizeof(int64_t),
             py::format_descriptor<int64_t>::value,
             2, /* How many dimensions */
-	    {static_cast<py::ssize_t>(n_bins), static_cast<py::ssize_t>(2)}, /* shape */
-	    {static_cast<py::ssize_t>(2 * sizeof(int64_t)), static_cast<py::ssize_t>(sizeof(int64_t))} /* stride */
+            {static_cast<py::ssize_t>(n_bins), static_cast<py::ssize_t>(2)}, /* shape */
+            {static_cast<py::ssize_t>(2 * sizeof(int64_t)), static_cast<py::ssize_t>(sizeof(int64_t))} /* stride */
     );
     ContigNPArray<int64_t> frame_ix = ContigNPArray<int64_t>(frame_idx_info);
     CNDArrayWrapper::NDRawArrayWrapper<int64_t, 2> frame_ix_wrapper(static_cast<int64_t *>(frame_ix.request().ptr),
                                                                     std::array<int64_t, 2>({n_bins, 2}));
 
     _raw_compute_interval_overlaps(movie_bin_wrapper,
-                               spike_bin_wrapper,
-                               frame_ix_wrapper,
-                               frame_weight_wrapper);
+                                   spike_bin_wrapper,
+                                   frame_ix_wrapper,
+                                   frame_weight_wrapper);
 
     return std::make_pair(frame_ix, frame_weights);
 
 }
-
 
 #endif //MOVIE_UPSAMPLING_UPSAMPLE_MOVIE_H
