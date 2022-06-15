@@ -97,6 +97,10 @@ ext_modules = [
         ],
         language='c++'
     ),
+    CUDAExtension('movie_upsampling.torch_sparse_upsample_cuda', [
+        'movie_upsampling/torch_sparse_upsample_cuda/upsample_cuda.cpp',
+        'movie_upsampling/torch_sparse_upsample_cuda/upsampling.cu',
+    ])
 ]
 
 py_modules = [
@@ -114,15 +118,3 @@ setup(
     cmdclass={'build_ext': BuildExt},
     zip_safe=False,
 )
-
-setup(
-    name='torch_sparse_upsample',
-    ext_modules=[
-        CUDAExtension('movie_upsampling.torch_sparse_upsample_cuda', [
-            'movie_upsampling/torch_sparse_upsample_cuda/upsample_cuda.cpp',
-            'movie_upsampling/torch_sparse_upsample_cuda/upsampling.cu',
-        ])
-    ],
-    cmdclass={
-        'build_ext': BuildExtension
-    })

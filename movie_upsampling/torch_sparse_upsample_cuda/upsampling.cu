@@ -64,13 +64,13 @@ torch::Tensor upsample_sparse_movie_cuda(torch::Tensor movie_frames,
     const int64_t threads = 1024;
     const int64_t blocks = (n_bins + threads - 1) / threads;
 
-    AT_DISPATCH_FLOATING_TYPES(dest.scalar_type(), "sparse_upsample_movie", ([&] {
+    AT_DISPATCH_FLOATING_TYPES(dest.scalar_type(), "sparse_upsample_movie", [&] {
         sparse_time_domain_movie_upsample_kernel<scalar_t><<<blocks, threads>>>(
                 movie_frames.packed_accessor<scalar_t, 3, torch::RestrictPtrTraits, size_t>(),
                 dest.packed_accessor<scalar_t, 3, torch::RestrictPtrTraits, size_t>(),
                 frame_selection.packed_accessor<int64_t, 2, torch::RestrictPtrTraits, size_t>(),
-                frame_weights.packed_accessor<scalar_t, 2, torch::RestrictPtrTraits, size_t>())
-    }));
+                frame_weights.packed_accessor<scalar_t, 2, torch::RestrictPtrTraits, size_t>());
+    });
 
     return dest;
 }
