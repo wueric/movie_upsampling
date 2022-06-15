@@ -63,10 +63,10 @@ void zero_2D_buffer(CNDArrayWrapper::StaticNDArrayWrapper<T, 2> &buffer) {
     }
 }
 
-ContigNPArray<float> temporal_upsample_transpose_movie(
-        ContigNPArray<uint8_t> movie_frames,
-        ContigNPArray<float> movie_bin_cutoffs,
-        ContigNPArray<float> spike_bin_cutoffs) {
+ContigNPArray<float>& temporal_upsample_transpose_movie(
+        ContigNPArray<uint8_t> &movie_frames,
+        ContigNPArray<float> &movie_bin_cutoffs,
+        ContigNPArray<float> &spike_bin_cutoffs) {
 
     py::buffer_info movie_frame_info = movie_frames.request();
     auto *movie_frame_ptr = static_cast<uint8_t *>(movie_frame_info.ptr);
