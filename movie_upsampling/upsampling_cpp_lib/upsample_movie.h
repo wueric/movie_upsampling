@@ -63,10 +63,10 @@ void zero_2D_buffer(CNDArrayWrapper::StaticNDArrayWrapper<T, 2> &buffer) {
     }
 }
 
-ContigNPArray<float>& temporal_upsample_transpose_movie(
-        ContigNPArray<uint8_t> &movie_frames,
-        ContigNPArray<float> &movie_bin_cutoffs,
-        ContigNPArray<float> &spike_bin_cutoffs) {
+ContigNPArray<float> temporal_upsample_transpose_movie(
+        ContigNPArray<uint8_t> movie_frames,
+        ContigNPArray<float> movie_bin_cutoffs,
+        ContigNPArray<float> spike_bin_cutoffs) {
 
     py::buffer_info movie_frame_info = movie_frames.request();
     auto *movie_frame_ptr = static_cast<uint8_t *>(movie_frame_info.ptr);
@@ -104,26 +104,26 @@ ContigNPArray<float>& temporal_upsample_transpose_movie(
             sizeof(float),
             py::format_descriptor<float>::value,
             3, /* How many dimensions */
-            {height, width, n_bins}, /* shape */
-            {sizeof(float) * width * n_bins, sizeof(float) * n_bins, sizeof(float)} /* stride */
+            {n_bins, height, width}, /* shape */
+            {sizeof(float) * height * width, sizeof(float) * width, sizeof(float)} /* stride */
     );
 
     ContigNPArray<float> upsampled_movie = ContigNPArray<float>(upsampled_movie_info);
-    memset(upsampled_movie.request().ptr, 0, height * width * n_bins * sizeof(float));
+    //memset(upsampled_movie.request().ptr, 0, height * width * n_bins * sizeof(float));
 
     // and also make a wrapper for the upsampled movie
     CNDArrayWrapper::StaticNDArrayWrapper<float, 3> upsampled_wrapper(
             static_cast<float *>(upsampled_movie.request().ptr),
-            {height, width, n_bins}
+            {n_bins, height, width}
     );
 
     int64_t frame_idx = 0;
     for (int64_t us_idx = 0; us_idx < n_bins; ++us_idx) {
 
         CNDArrayWrapper::StaticNDArrayWrapper<float, 2> upsampled_slice_wrapper = upsampled_wrapper.slice<2>(
+                CNDArrayWrapper::makeIdxSlice(us_idx),
                 CNDArrayWrapper::makeAllSlice(),
-                CNDArrayWrapper::makeAllSlice(),
-                CNDArrayWrapper::makeIdxSlice(us_idx)
+                CNDArrayWrapper::makeAllSlice()
         );
 
         float low = spike_bin_wrapper.valueAt(us_idx);
@@ -161,6 +161,7 @@ ContigNPArray<float>& temporal_upsample_transpose_movie(
              * Implementation below is very sketchy but probably correct; see if we can find a better
              * way to do the copy outside of the loop
              */
+
 
             if (interval_overlap < bin_width) {
                 float overlap_fraction = interval_overlap / bin_width;
