@@ -118,9 +118,9 @@ setup(
 setup(
     name='torch_sparse_upsample',
     ext_modules=[
-        CUDAExtension('torch_sparse_upsample_cuda', [
-            'upsample_cuda.cpp',
-            'upsampling.cu',
+        CUDAExtension('movie_upsampling.torch_sparse_upsample_cuda', [
+            'movie_upsampling/torch_sparse_upsample_cuda/upsample_cuda.cpp',
+            'movie_upsampling/torch_sparse_upsample_cuda/upsampling.cu',
         ])
     ],
     cmdclass={
