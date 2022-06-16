@@ -1,6 +1,8 @@
 import numpy as np
+import torch
 
 from . import upsampling_cpp_lib
+from . import torch_sparse_upsample_cuda
 
 def compute_interval_overlaps(movie_cutoff_times: np.ndarray,
                               spike_bin_cutoff_times: np.ndarray):
@@ -13,4 +15,11 @@ def compute_interval_overlaps(movie_cutoff_times: np.ndarray,
     '''
 
     return upsampling_cpp_lib._compute_interval_overlaps(movie_cutoff_times, spike_bin_cutoff_times)
+
+
+def movie_sparse_upsample_cuda(movie_frames: torch.Tensor,
+                               frame_selection: torch.Tensor,
+                               frame_weights: torch.Tensor) -> torch.Tensor:
+
+    return torch_sparse_upsample_cuda.movie_sparse_upsample_cuda(movie_frames, frame_selection, frame_weights)
 

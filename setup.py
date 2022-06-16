@@ -115,6 +115,6 @@ setup(
     packages=py_modules,
     install_requires=['pybind11>=2.3', 'numpy'],
     setup_requires=['pybind11>=2.3'],
-    cmdclass={'build_ext': BuildExt},
+    cmdclass={'build_ext': BuildExtension},
     zip_safe=False,
 )

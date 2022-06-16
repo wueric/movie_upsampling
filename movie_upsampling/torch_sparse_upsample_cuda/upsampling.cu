@@ -5,6 +5,8 @@
 #include <cuda.h>
 #include <cuda_runtime.h>
 
+#include <iostream>
+
 template<typename scalar_t>
 __global__ void sparse_time_domain_movie_upsample_kernel(
         const torch::PackedTensorAccessor<scalar_t, 3, torch::RestrictPtrTraits, size_t> movie_frames,
@@ -12,12 +14,12 @@ __global__ void sparse_time_domain_movie_upsample_kernel(
         const torch::PackedTensorAccessor<int64_t, 2, torch::RestrictPtrTraits, size_t> frame_selection,
         const torch::PackedTensorAccessor<scalar_t, 2, torch::RestrictPtrTraits, size_t> frame_weights) {
 
-    const int64_t index = blockIdx.x * blockDim.x + threadIdx.x;
-    const int64_t stride = blockDim.x * gridDim.x;
+    int64_t index = blockIdx.x * blockDim.x + threadIdx.x;
+    int64_t stride = blockDim.x * gridDim.x;
 
-    const int64_t max_N = frame_selection.size(0);
-    const int64_t height = frame_selection.size(1);
-    const int64_t width = frame_selection.size(2);
+    const int64_t max_N = us_dest.size(0);
+    const int64_t height = us_dest.size(1);
+    const int64_t width = us_dest.size(2);
 
     for (int64_t i = index; i < max_N; i += stride) {
         if (frame_selection[i][1] == INVALID_IDX) {
@@ -61,8 +63,8 @@ torch::Tensor upsample_sparse_movie_cuda(torch::Tensor movie_frames,
 
     torch::Tensor dest = torch::empty(std::vector<int64_t>({n_bins, height, width}), options);
 
-    const int64_t threads = 1024;
-    const int64_t blocks = (n_bins + threads - 1) / threads;
+    const int threads = 1024;
+    const dim3 blocks((n_bins + threads - 1) / threads);
 
     AT_DISPATCH_FLOATING_TYPES(dest.scalar_type(), "sparse_upsample_movie", [&] {
         sparse_time_domain_movie_upsample_kernel<scalar_t><<<blocks, threads>>>(
