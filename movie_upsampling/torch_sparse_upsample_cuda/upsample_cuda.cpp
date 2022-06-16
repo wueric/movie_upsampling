@@ -2,6 +2,7 @@
 // Created by Eric Wu on 6/15/22.
 //
 #include <torch/extension.h>
+#include <c10/cuda/CUDAGuard.h>
 
 torch::Tensor upsample_sparse_movie_cuda(torch::Tensor movie_frames,
                                          torch::Tensor frame_selection,
@@ -14,6 +15,10 @@ torch::Tensor upsample_sparse_movie_cuda(torch::Tensor movie_frames,
 torch::Tensor movie_sparse_upsample_cuda(torch::Tensor movie_frames,
                                          torch::Tensor frame_selection,
                                          torch::Tensor frame_weights) {
+    CHECK_INPUT(movie_frames);
+    CHECK_INPUT(frame_selection);
+    CHECK_INPUT(frame_weights);
+    const at::cuda::OptionalCUDAGuard device_guard(device_of(movie_frames));
     return upsample_sparse_movie_cuda(movie_frames, frame_selection, frame_weights);
 }
 
@@ -23,7 +28,11 @@ torch::Tensor dumb_add_cuda(torch::Tensor a_tens,
 
 torch::Tensor test_dumb_add_cuda(torch::Tensor a_tens,
                                  torch::Tensor b_tens) {
-    return dumb_add_cuda(a_tens, b_tens)
+
+    CHECK_INPUT(a_tens);
+    CHECK_INPUT(b_tens);
+    const at::cuda::OptionalCUDAGuard device_guard(device_of(a_tens));
+    return dumb_add_cuda(a_tens, b_tens);
 }
 
 

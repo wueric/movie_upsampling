@@ -5,7 +5,6 @@
 #include <cuda.h>
 #include <cuda_runtime.h>
 
-#include <iostream>
 
 template<typename scalar_t>
 __global__ void dumb_add_kernel(
@@ -13,8 +12,8 @@ __global__ void dumb_add_kernel(
         const torch::PackedTensorAccessor<scalar_t, 1, torch::RestrictPtrTraits, size_t> b,
         torch::PackedTensorAccessor<scalar_t, 1, torch::RestrictPtrTraits, size_t> dest) {
 
-    int64_t index = blockIdx.x * blockDim.x + threadIdx.x;
-    int64_t stride = blockDim.x * gridDim.x;
+    int index = blockIdx.x * blockDim.x + threadIdx.x;
+    int stride = blockDim.x * gridDim.x;
 
     const int64_t max_N = a.size(0);
     for (int64_t i = index; i < max_N; i += stride) {
@@ -32,17 +31,17 @@ torch::Tensor dumb_add_cuda(torch::Tensor a_tens,
             .layout(torch::kStrided)
             .device(a_tens.device());
 
-    torch::Tensor dest = torch::empty(std::vector<int64_t>({dim_a}), options);
+    torch::Tensor dest = torch::ones(std::vector<int64_t>({dim_a}), options);
 
     const int threads = 1024;
-    const dim3 blocks((dim_a + threads - 1) / threads);
+    const dim3 blocks((dim_a + threads - 1) / threads) ;
 
-    AT_DISPATCH_FLOATING_TYPES(dest.scalar_type(), "dumb_add", [&] {
+    AT_DISPATCH_FLOATING_TYPES(dest.scalar_type(), "dumb_add", ([&] {
         dumb_add_kernel<scalar_t><<<blocks, threads>>>(
             a_tens.packed_accessor<scalar_t, 1, torch::RestrictPtrTraits, size_t>(),
             b_tens.packed_accessor<scalar_t, 1, torch::RestrictPtrTraits, size_t>(),
             dest.packed_accessor<scalar_t, 1, torch::RestrictPtrTraits, size_t>());
-    });
+    }));
 
     return dest;
 }
