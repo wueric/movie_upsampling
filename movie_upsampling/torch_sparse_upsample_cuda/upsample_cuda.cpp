@@ -22,6 +22,21 @@ torch::Tensor movie_sparse_upsample_cuda(torch::Tensor movie_frames,
     return upsample_sparse_movie_cuda(movie_frames, frame_selection, frame_weights);
 }
 
+torch::Tensor upsample_transpose_sparse_movie_cuda(torch::Tensor movie_frames,
+                                                   torch::Tensor frame_selection,
+                                                   torch::Tensor frame_weights);
+
+
+torch::Tensor movie_sparse_upsample_transpose_cuda(torch::Tensor movie_frames,
+                                                   torch::Tensor frame_selection,
+                                                   torch::Tensor frame_weights) {
+    CHECK_INPUT(movie_frames);
+    CHECK_INPUT(frame_selection);
+    CHECK_INPUT(frame_weights);
+    const at::cuda::OptionalCUDAGuard device_guard(device_of(movie_frames));
+    return upsample_transpose_sparse_movie_cuda(movie_frames, frame_selection, frame_weights);
+}
+
 
 torch::Tensor dumb_add_cuda(torch::Tensor a_tens,
                             torch::Tensor b_tens);
