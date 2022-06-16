@@ -53,6 +53,7 @@ torch::Tensor test_dumb_add_cuda(torch::Tensor a_tens,
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
 m.def("movie_sparse_upsample_cuda", &movie_sparse_upsample_cuda, "Sparse movie upsampling on GPU");
+m.def("movie_sparse_upsample_transpose_cuda", &movie_sparse_upsample_transpose_cuda, "Sparse movie upsampling on GPU");
 m.def("test_dumb_add_cuda", &test_dumb_add_cuda, "1D addition on GPU");
 }
 
