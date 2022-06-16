@@ -8,6 +8,46 @@
 #include <iostream>
 
 template<typename scalar_t>
+__global__ void dumb_add_kernel(
+        const torch::PackedTensorAccessor<scalar_t, 1, torch::RestrictPtrTraits, size_t> a,
+        const torch::PackedTensorAccessor<scalar_t, 1, torch::RestrictPtrTraits, size_t> b,
+        torch::PackedTensorAccessor<scalar_t, 1, torch::RestrictPtrTraits, size_t> dest) {
+
+    int64_t index = blockIdx.x * blockDim.x + threadIdx.x;
+    int64_t stride = blockDim.x * gridDim.x;
+
+    const int64_t max_N = a.size(0);
+    for (int64_t i = index; i < max_N; i += stride) {
+        dest[i] = a[i] + b[i];
+    }
+}
+
+torch::Tensor dumb_add_cuda(torch::Tensor a_tens,
+                            torch::Tensor b_tens) {
+
+    int64_t dim_a = a_tens.size(0);
+
+    auto options = torch::TensorOptions()
+            .dtype(a_tens.dtype())
+            .layout(torch::kStrided)
+            .device(a_tens.device());
+
+    torch::Tensor dest = torch::empty(std::vector<int64_t>({dim_a}), options);
+
+    const int threads = 1024;
+    const dim3 blocks((dim_a + threads - 1) / threads);
+
+    AT_DISPATCH_FLOATING_TYPES(dest.scalar_type(), "dumb_add", [&] {
+        dumb_add_kernel<scalar_t><<<blocks, threads>>>(
+            a_tens.packed_accessor<scalar_t, 1, torch::RestrictPtrTraits, size_t>(),
+            b_tens.packed_accessor<scalar_t, 1, torch::RestrictPtrTraits, size_t>(),
+            dest.packed_accessor<scalar_t, 1, torch::RestrictPtrTraits, size_t>());
+    });
+
+    return dest;
+}
+
+template<typename scalar_t>
 __global__ void sparse_time_domain_movie_upsample_kernel(
         const torch::PackedTensorAccessor<scalar_t, 3, torch::RestrictPtrTraits, size_t> movie_frames,
         torch::PackedTensorAccessor<scalar_t, 3, torch::RestrictPtrTraits, size_t> us_dest,
