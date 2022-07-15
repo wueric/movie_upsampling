@@ -147,7 +147,7 @@ __global__ void sparse_time_domain_upsample_T_kernel(
             int64_t second_frame_ix = frame_selection[i][1];;
             scalar_t second_weight = frame_weights[i][1];
             for (int64_t h = 0; h < height; ++h) {
-                for (int64_t w = 0; w < height; ++w) {
+                for (int64_t w = 0; w < width; ++w) {
                     scalar_t first_val = movie_frames[first_frame_ix][h][w];
                     scalar_t second_val = movie_frames[second_frame_ix][h][w];
 
