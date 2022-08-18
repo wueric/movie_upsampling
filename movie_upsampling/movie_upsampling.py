@@ -36,7 +36,7 @@ def flat_sparse_upsample_cuda(movie_frames: torch.Tensor,
     return torch_sparse_upsample_cuda.flat_sparse_upsample_cuda(movie_frames, frame_selection, frame_weights)
 
 
-def flat_sparse_upsample_Transpose_cuda(movie_frames: torch.Tensor,
+def flat_sparse_upsample_transpose_cuda(movie_frames: torch.Tensor,
                                         frame_selection: torch.Tensor,
                                         frame_weights: torch.Tensor) -> torch.Tensor:
     return torch_sparse_upsample_cuda.flat_sparse_upsample_transpose_cuda(movie_frames, frame_selection, frame_weights)
