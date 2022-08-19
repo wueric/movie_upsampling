@@ -30,6 +30,18 @@ def movie_sparse_upsample_transpose_cuda(movie_frames: torch.Tensor,
     return torch_sparse_upsample_cuda.movie_sparse_upsample_transpose_cuda(movie_frames, frame_selection, frame_weights)
 
 
+def flat_sparse_upsample_cuda(movie_frames: torch.Tensor,
+                              frame_selection: torch.Tensor,
+                              frame_weights: torch.Tensor) -> torch.Tensor:
+    return torch_sparse_upsample_cuda.flat_sparse_upsample_cuda(movie_frames, frame_selection, frame_weights)
+
+
+def flat_sparse_upsample_transpose_cuda(movie_frames: torch.Tensor,
+                                        frame_selection: torch.Tensor,
+                                        frame_weights: torch.Tensor) -> torch.Tensor:
+    return torch_sparse_upsample_cuda.flat_sparse_upsample_transpose_cuda(movie_frames, frame_selection, frame_weights)
+
+
 def weasel_add(a: torch.Tensor,
                b: torch.Tensor) -> torch.Tensor:
     return torch_sparse_upsample_cuda.test_dumb_add_cuda(a, b)

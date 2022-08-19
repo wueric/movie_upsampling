@@ -38,6 +38,41 @@ torch::Tensor movie_sparse_upsample_transpose_cuda(torch::Tensor movie_frames,
 }
 
 
+torch::Tensor upsample_flat_cuda(torch::Tensor flat_time_data,
+                                 torch::Tensor selection,
+                                 torch::Tensor weights);
+
+
+torch::Tensor flat_sparse_upsample_cuda(torch::Tensor flat_time_data,
+                                        torch::Tensor frame_selection,
+                                        torch::Tensor frame_weights) {
+    CHECK_INPUT(flat_time_data);
+    CHECK_INPUT(frame_selection);
+    CHECK_INPUT(frame_weights);
+
+    const at::cuda::OptionalCUDAGuard(device_of(flat_time_data));
+    return upsample_flat_cuda(flat_time_data, frame_selection, frame_weights);
+}
+
+
+torch::Tensor upsample_transpose_flat_cuda(torch::Tensor flat_time_data,
+                                           torch::Tensor selection,
+                                           torch::Tensor weights);
+
+
+torch::Tensor flat_sparse_upsample_transpose_cuda(torch::Tensor flat_time_data,
+                                                  torch::Tensor frame_selection,
+                                                  torch::Tensor frame_weights) {
+
+    CHECK_INPUT(flat_time_data);
+    CHECK_INPUT(frame_selection);
+    CHECK_INPUT(frame_weights);
+
+    const at::cuda::OptionalCUDAGuard(device_of(flat_time_data));
+    return upsample_transpose_flat_cuda(flat_time_data, frame_selection, frame_weights);
+}
+
+
 torch::Tensor dumb_add_cuda(torch::Tensor a_tens,
                             torch::Tensor b_tens);
 
@@ -54,6 +89,8 @@ torch::Tensor test_dumb_add_cuda(torch::Tensor a_tens,
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
 m.def("movie_sparse_upsample_cuda", &movie_sparse_upsample_cuda, "Sparse movie upsampling on GPU");
 m.def("movie_sparse_upsample_transpose_cuda", &movie_sparse_upsample_transpose_cuda, "Sparse movie upsampling on GPU");
+m.def("flat_sparse_upsample_cuda", &flat_sparse_upsample_cuda, "Sparse flat upsampling on GPU");
+m.def("flat_sparse_upsample_transpose_cuda", &flat_sparse_upsample_transpose_cuda, "Sparse flat upsampling transpose on GPU");
 m.def("test_dumb_add_cuda", &test_dumb_add_cuda, "1D addition on GPU");
 }
 
