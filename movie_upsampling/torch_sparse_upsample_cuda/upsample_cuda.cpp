@@ -50,7 +50,7 @@ torch::Tensor flat_sparse_upsample_cuda(torch::Tensor flat_time_data,
     CHECK_INPUT(frame_selection);
     CHECK_INPUT(frame_weights);
 
-    const at::cuda::OptionalCUDAGuard(device_of(flat_time_data));
+    const at::cuda::OptionalCUDAGuard device_guard(device_of(flat_time_data));
     return upsample_flat_cuda(flat_time_data, frame_selection, frame_weights);
 }
 
@@ -68,7 +68,7 @@ torch::Tensor flat_sparse_upsample_transpose_cuda(torch::Tensor flat_time_data,
     CHECK_INPUT(frame_selection);
     CHECK_INPUT(frame_weights);
 
-    const at::cuda::OptionalCUDAGuard(device_of(flat_time_data));
+    const at::cuda::OptionalCUDAGuard device_guard(device_of(flat_time_data));
     return upsample_transpose_flat_cuda(flat_time_data, frame_selection, frame_weights);
 }
 
