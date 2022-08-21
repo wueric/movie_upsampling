@@ -36,7 +36,7 @@ torch::Tensor dumb_add_cuda(torch::Tensor a_tens,
     const int threads = 1024;
     const dim3 blocks((dim_a + threads - 1) / threads) ;
 
-    AT_DISPATCH_FLOATING_TYPES(dest.scalar_type(), "dumb_add", ([&] {
+    AT_DISPATCH_FLOATING_TYPES_AND_HALF(dest.scalar_type(), "dumb_add", ([&] {
         dumb_add_kernel<scalar_t><<<blocks, threads>>>(
             a_tens.packed_accessor<scalar_t, 1, torch::RestrictPtrTraits, size_t>(),
             b_tens.packed_accessor<scalar_t, 1, torch::RestrictPtrTraits, size_t>(),
@@ -105,7 +105,7 @@ torch::Tensor upsample_sparse_movie_cuda(torch::Tensor movie_frames,
     const int threads = 1024;
     const dim3 blocks((n_bins + threads - 1) / threads);
 
-    AT_DISPATCH_FLOATING_TYPES(dest.scalar_type(), "sparse_upsample_movie", [&] {
+    AT_DISPATCH_FLOATING_TYPES_AND_HALF(dest.scalar_type(), "sparse_upsample_movie", [&] {
         sparse_time_domain_movie_upsample_kernel<scalar_t><<<blocks, threads>>>(
                 movie_frames.packed_accessor<scalar_t, 3, torch::RestrictPtrTraits, size_t>(),
                 dest.packed_accessor<scalar_t, 3, torch::RestrictPtrTraits, size_t>(),
@@ -178,7 +178,7 @@ torch::Tensor upsample_transpose_sparse_movie_cuda(torch::Tensor movie_frames,
     const int threads = 1024;
     const dim3 blocks((n_bins + threads - 1) / threads);
 
-    AT_DISPATCH_FLOATING_TYPES(dest.scalar_type(), "sparse_upsample_transpose_movie", [&] {
+    AT_DISPATCH_FLOATING_TYPES_AND_HALF(dest.scalar_type(), "sparse_upsample_transpose_movie", [&] {
         sparse_time_domain_upsample_T_kernel<scalar_t><<<blocks, threads>>>(
                 movie_frames.packed_accessor<scalar_t, 3, torch::RestrictPtrTraits, size_t>(),
                 dest.packed_accessor<scalar_t, 3, torch::RestrictPtrTraits, size_t>(),
@@ -244,7 +244,7 @@ torch::Tensor upsample_flat_cuda(torch::Tensor flat_time_data,
     const int threads = 1024;
     const dim3 blocks((n_bins + threads - 1) / threads);
 
-    AT_DISPATCH_FLOATING_TYPES(dest.scalar_type(), "sparse_upsample_flat", [&] {
+    AT_DISPATCH_FLOATING_TYPES_AND_HALF(dest.scalar_type(), "sparse_upsample_flat", [&] {
         sparse_time_domain_upsample_flat_kernel<scalar_t><<<blocks, threads>>>(
                 flat_time_data.packed_accessor<scalar_t, 2, torch::RestrictPtrTraits, size_t>(),
                 dest.packed_accessor<scalar_t, 2, torch::RestrictPtrTraits, size_t>(),
@@ -310,7 +310,7 @@ torch::Tensor upsample_transpose_flat_cuda(torch::Tensor flat_time_data,
     const int threads = 1024;
     const dim3 blocks((n_bins + threads - 1) / threads);
 
-    AT_DISPATCH_FLOATING_TYPES(dest.scalar_type(), "sparse_upsample_transpose_flat", [&] {
+    AT_DISPATCH_FLOATING_TYPES_AND_HALF(dest.scalar_type(), "sparse_upsample_transpose_flat", [&] {
         sparse_time_domain_upsample_flat_T_kernel<scalar_t><<<blocks, threads>>>(
                 flat_time_data.packed_accessor<scalar_t, 2, torch::RestrictPtrTraits, size_t>(),
                 dest.packed_accessor<scalar_t, 2, torch::RestrictPtrTraits, size_t>(),
