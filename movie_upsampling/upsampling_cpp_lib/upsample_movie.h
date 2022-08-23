@@ -64,11 +64,8 @@ void _raw_compute_interval_overlaps(CNDArrayWrapper::NDRawArrayWrapper<float, 1>
             frame_weights.storeTo(interval_overlap, us_idx, 0);
 
             ++frame_high;
-            curr_frame_start = movie_bin_cutoffs.valueAt(frame_high);
-            curr_frame_end = movie_bin_cutoffs.valueAt(frame_high + 1);
-            interval_overlap = (std::min(curr_frame_end, high) - std::max(curr_frame_start, low)) / bin_width;
             output_overlaps.storeTo(frame_high, us_idx, 1);
-            frame_weights.storeTo(interval_overlap, us_idx, 1);
+            frame_weights.storeTo(1.0 - interval_overlap, us_idx, 1);
 
             frame_idx = frame_high;
         }
