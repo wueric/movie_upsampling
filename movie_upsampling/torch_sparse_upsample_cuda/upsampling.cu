@@ -88,6 +88,7 @@ __global__ void sparse_time_domain_movie_upsample_kernel(
     }
 }
 
+
 torch::Tensor upsample_sparse_movie_cuda(torch::Tensor movie_frames,
                                          torch::Tensor frame_selection,
                                          torch::Tensor frame_weights) {

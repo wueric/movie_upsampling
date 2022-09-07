@@ -100,6 +100,10 @@ ext_modules = [
     CUDAExtension('movie_upsampling.torch_sparse_upsample_cuda', [
         'movie_upsampling/torch_sparse_upsample_cuda/upsample_cuda.cpp',
         'movie_upsampling/torch_sparse_upsample_cuda/upsampling.cu',
+    ]),
+    CUDAExtension('movie_upsampling.jitter_cuda', [
+        'movie_upsampling/jitter_cuda/jitter_cuda.cpp',
+        'movie_upsampling/jitter_cuda/jitter.cu',
     ])
 ]
 
