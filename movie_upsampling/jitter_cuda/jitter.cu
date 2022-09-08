@@ -11,14 +11,14 @@ template<typename scalar_t>
 __global__ void _kern_jitter_frames_forward(
         const torch::PackedTensorAccessor<scalar_t, 3, torch::RestrictPtrTraits, size_t> frames,
         const torch::PackedTensorAccessor<int64_t, 3, torch::RestrictPtrTraits, size_t> jitter_coords,
-        torch::PackedTensorAccessor<scalar_t, 4, torch::RestrictPtrTratis, size_t> jitter_dest
+        torch::PackedTensorAccessor<scalar_t, 4, torch::RestrictPtrTraits, size_t> jitter_dest
 ) {
 
-    const int64_t height = frames.size(2);
+    const int64_t height = frames.size(1);
     int64_t h_index = threadIdx.x;
     int64_t h_stride = blockDim.x;
 
-    const int64_t width = frames.size(3);
+    const int64_t width = frames.size(2);
     int64_t w_index = threadIdx.y;
     int64_t w_stride = blockDim.y;
 
@@ -53,10 +53,10 @@ torch::Tensor _jitter_frames_forward(torch::Tensor frames,
     const int64_t n_jitter_frames = jitter_coords.size(1);
 
     auto options = torch::TensorOptions()
-            .dtype(a_tens.dtype())
+            .dtype(frames.dtype())
             .layout(torch::kStrided)
-            .device(a_tens.device());
-    torch::Tensor dest = torch.zeros(std::vector<int64_t>({batch, n_jitter_frames, height, width}), options);
+            .device(frames.device());
+    torch::Tensor dest = torch::zeros(std::vector<int64_t>({batch, n_jitter_frames, height, width}), options);
 
     const dim3 threads(32, 32);
     const dim3 blocks(batch, n_jitter_frames);
@@ -122,14 +122,11 @@ torch::Tensor _jitter_frames_backward(torch::Tensor d_output_d_jittered_frames,
     int64_t height = d_output_d_jittered_frames.size(2);
     int64_t width = d_output_d_jittered_frames.size(3);
 
-    const dim3 threads(32, 32);
-    const dim3 blocks(batch, n_jittered_frames);
-
     auto options = torch::TensorOptions()
-            .dtype(a_tens.dtype())
+            .dtype(d_output_d_jittered_frames.dtype())
             .layout(torch::kStrided)
-            .device(a_tens.device());
-    torch::Tensor dest = torch.zeros(std::vector<int64_t>({batch, height, width}), options);
+            .device(d_output_d_jittered_frames.device());
+    torch::Tensor dest = torch::zeros(std::vector<int64_t>({batch, height, width}), options);
 
     const dim3 threads(32, 32);
     const dim3 blocks(batch);

@@ -24,10 +24,10 @@ using ContigNPArray = py::array_t<T, py::array::c_style | py::array::forcecast>;
 
 
 template<class T>
-int64_t _raw_compute_interval_overlaps(CNDArrayWrapper::NDRawArrayWrapper<T, 1> movie_bin_cutoffs,
-                                       CNDArrayWrapper::NDRawArrayWrapper<T, 1> spike_bin_cutoffs,
-                                       CNDArrayWrapper::NDRawArrayWrapper<int64_t, 2> output_overlaps,
-                                       CNDArrayWrapper::NDRawArrayWrapper<T, 2> frame_weights) {
+int64_t _raw_compute_interval_overlaps(CNDArrayWrapper::StaticNDArrayWrapper<T, 1> movie_bin_cutoffs,
+                                       CNDArrayWrapper::StaticNDArrayWrapper<T, 1> spike_bin_cutoffs,
+                                       CNDArrayWrapper::StaticNDArrayWrapper<int64_t, 2> output_overlaps,
+                                       CNDArrayWrapper::StaticNDArrayWrapper<T, 2> frame_weights) {
 
     int64_t n_spike_bins = spike_bin_cutoffs.shape[0] - 1;
     int64_t n_frames = movie_bin_cutoffs.shape[0] - 1;
@@ -91,10 +91,10 @@ int64_t _raw_compute_interval_overlaps(CNDArrayWrapper::NDRawArrayWrapper<T, 1> 
 
 template<class T>
 void _raw_compute_backward_interval_overlaps(
-        CNDArrayWrapper::NDRawArrayWrapper<T, 1> movie_bin_cutoffs,
-        CNDArrayWrapper::NDRawArrayWrapper<T, 1> spike_bin_cutoffs,
-        CNDArrayWrapper::NDRawArrayWrapper<int64_t, 2> backward_overlaps,
-        CNDArrayWrapper::NDRawArrayWrapper<T, 2> backward_weights) {
+        CNDArrayWrapper::StaticNDArrayWrapper<T, 1> movie_bin_cutoffs,
+        CNDArrayWrapper::StaticNDArrayWrapper<T, 1> spike_bin_cutoffs,
+        CNDArrayWrapper::StaticNDArrayWrapper<int64_t, 2> backward_overlaps,
+        CNDArrayWrapper::StaticNDArrayWrapper<T, 2> backward_weights) {
     /*
      * @param movie_bin_cutoffs: shape (n_movie_frame_cutoffs = n_movie_frames + 1, )
      * @param spike_bin_cutoffs: shape (n_spike_bin_cutoffs = n_spike_bins + 1, )
@@ -134,38 +134,40 @@ void _raw_compute_backward_interval_overlaps(
 }
 
 
-std::tuple <ContigNPArray<int64_t>, ContigNPArray<float>> _compute_interval_overlaps(
-        ContigNPArray<float> movie_bin_cutoffs,
-        ContigNPArray<float> spike_bin_cutoffs) {
+template<class F>
+std::tuple <ContigNPArray<int64_t>, ContigNPArray<F>> _compute_interval_overlaps(
+        ContigNPArray<F> movie_bin_cutoffs,
+        ContigNPArray<F> spike_bin_cutoffs) {
 
     py::buffer_info movie_bin_info = movie_bin_cutoffs.request();
-    auto *movie_bin_ptr = static_cast<float *>(movie_bin_info.ptr);
+    auto *movie_bin_ptr = static_cast<F *>(movie_bin_info.ptr);
     const int64_t n_frame_cutoffs = movie_bin_info.shape[0];
 
-    CNDArrayWrapper::NDRawArrayWrapper<float, 1> movie_bin_wrapper(
+    CNDArrayWrapper::StaticNDArrayWrapper<F, 1> movie_bin_wrapper(
             movie_bin_ptr,
             {n_frame_cutoffs});
 
     py::buffer_info spike_bin_info = spike_bin_cutoffs.request();
-    auto *spike_bin_ptr = static_cast<float *>(spike_bin_info.ptr);
+    auto *spike_bin_ptr = static_cast<F *>(spike_bin_info.ptr);
     const int64_t n_bin_cutoffs = spike_bin_info.shape[0];
     const int64_t n_bins = n_bin_cutoffs - 1;
 
-    CNDArrayWrapper::NDRawArrayWrapper<float, 1> spike_bin_wrapper(
+    CNDArrayWrapper::StaticNDArrayWrapper<F, 1> spike_bin_wrapper(
             spike_bin_ptr,
             {n_bin_cutoffs});
 
     auto frame_weight_info = py::buffer_info(
             nullptr,
-            sizeof(float),
-            py::format_descriptor<float>::value,
+            sizeof(F),
+            py::format_descriptor<F>::value,
             2, /* How many dimensions */
             {static_cast<py::ssize_t>(n_bins), static_cast<py::ssize_t>(2)}, /* shape */
-            {static_cast<py::ssize_t>(2 * sizeof(float)), static_cast<py::ssize_t>(sizeof(float))} /* stride */
+            {static_cast<py::ssize_t>(2 * sizeof(F)), static_cast<py::ssize_t>(sizeof(F))} /* stride */
     );
-    ContigNPArray<float> frame_weights = ContigNPArray<float>(frame_weight_info);
-    CNDArrayWrapper::NDRawArrayWrapper<float, 2> frame_weight_wrapper(static_cast<float *>(frame_weights.request().ptr),
-                                                                      std::array<int64_t, 2>({n_bins, 2}));
+    ContigNPArray<F> frame_weights = ContigNPArray<F>(frame_weight_info);
+    CNDArrayWrapper::StaticNDArrayWrapper<F, 2> frame_weight_wrapper(
+            static_cast<F *>(frame_weights.request().ptr),
+            std::array<int64_t, 2>({n_bins, 2}));
 
     auto frame_idx_info = py::buffer_info(
             nullptr,
@@ -176,13 +178,13 @@ std::tuple <ContigNPArray<int64_t>, ContigNPArray<float>> _compute_interval_over
             {static_cast<py::ssize_t>(2 * sizeof(int64_t)), static_cast<py::ssize_t>(sizeof(int64_t))} /* stride */
     );
     ContigNPArray<int64_t> frame_ix = ContigNPArray<int64_t>(frame_idx_info);
-    CNDArrayWrapper::NDRawArrayWrapper<int64_t, 2> frame_ix_wrapper(static_cast<int64_t *>(frame_ix.request().ptr),
-                                                                    std::array<int64_t, 2>({n_bins, 2}));
+    CNDArrayWrapper::StaticNDArrayWrapper<int64_t, 2> frame_ix_wrapper(static_cast<int64_t *>(frame_ix.request().ptr),
+                                                                       std::array<int64_t, 2>({n_bins, 2}));
 
-    _raw_compute_interval_overlaps(movie_bin_wrapper,
-                                   spike_bin_wrapper,
-                                   frame_ix_wrapper,
-                                   frame_weight_wrapper);
+    _raw_compute_interval_overlaps<F>(movie_bin_wrapper,
+                                      spike_bin_wrapper,
+                                      frame_ix_wrapper,
+                                      frame_weight_wrapper);
 
     return std::make_pair(frame_ix, frame_weights);
 
@@ -200,8 +202,8 @@ _batch_compute_interval_overlaps(ContigNPArray<F> batched_movie_bin_cutoffs,
     const int64_t n_frame_cutoffs = batched_movie_bin_info.shape[1];
     const int64_t n_frames = n_frame_cutoffs - 1;
 
-    CNDArrayWrapper::NDRawArrayWrapper<F, 2> movie_bin_wrapper(batched_movie_bin_ptr,
-                                                               std::array<int64_t>({batch, n_frame_cutoffs}));
+    CNDArrayWrapper::StaticNDArrayWrapper<F, 2> movie_bin_wrapper(batched_movie_bin_ptr,
+                                                                  std::array<int64_t, 2>({batch, n_frame_cutoffs}));
 
 
     py::buffer_info batched_spike_bin_info = batched_spike_bin_cutoffs.request();
@@ -209,8 +211,8 @@ _batch_compute_interval_overlaps(ContigNPArray<F> batched_movie_bin_cutoffs,
     const int64_t n_bin_cutoffs = batched_spike_bin_info.shape[1];
     const int64_t n_bins = n_bin_cutoffs - 1;
 
-    CNDArrayWrapper::NDRawArrayWrapper<F, 2> spike_bin_wrapper(batched_spike_bin_ptr,
-                                                               std::array<int64_t, 2>() { batch, n_bin_cutoffs }));
+    CNDArrayWrapper::StaticNDArrayWrapper<F, 2> spike_bin_wrapper(batched_spike_bin_ptr,
+                                                                  std::array<int64_t, 2>({batch, n_bin_cutoffs}));
 
     auto frame_weight_info = py::buffer_info(
             nullptr,
@@ -222,8 +224,8 @@ _batch_compute_interval_overlaps(ContigNPArray<F> batched_movie_bin_cutoffs,
              static_cast<py::ssize_t>(sizeof(F))} /* stride */
     );
     ContigNPArray<float> frame_weights = ContigNPArray<F>(frame_weight_info);
-    CNDArrayWrapper::NDRawArrayWrapper<F, 3> frame_weight_wrapper(static_cast<F *>(frame_weights.request().ptr),
-                                                                  std::array<int64_t, 3>({batch, n_bins, 2}));
+    CNDArrayWrapper::StaticNDArrayWrapper<F, 3> frame_weight_wrapper(static_cast<F *>(frame_weights.request().ptr),
+                                                                     std::array<int64_t, 3>({batch, n_bins, 2}));
 
     auto frame_idx_info = py::buffer_info(
             nullptr,
@@ -236,22 +238,22 @@ _batch_compute_interval_overlaps(ContigNPArray<F> batched_movie_bin_cutoffs,
     );
 
     ContigNPArray<int64_t> frame_ix = ContigNPArray<int64_t>(frame_idx_info);
-    CNDArrayWrapper::NDRawArrayWrapper<int64_t, 3> frame_ix_wrapper(static_cast<int64_t *>(frame_ix.request().ptr),
-                                                                    std::array<int64_t, 3>({batch, n_bins, 2}));
+    CNDArrayWrapper::StaticNDArrayWrapper<int64_t, 3> frame_ix_wrapper(static_cast<int64_t *>(frame_ix.request().ptr),
+                                                                       std::array<int64_t, 3>({batch, n_bins, 2}));
 
     int64_t max_bins_for_frame = 0;
     for (int64_t b = 0; b < batch; ++b) {
-        int64_t max_bins_for_trial = _raw_compute_interval_overlaps(
-                spike_bin_wrapper.slice(CNDArrayWrapper::makeIdxSlice(b),
-                                        CNDArrayWrapper::makeAllSlice()),
-                spike_bin_wrapper.slice(CNDArrayWrapper::makeIdxSlice(b),
-                                        CNDArrayWrapper::makeAllSlice()),
-                frame_weight_wrapper.slice(CNDArrayWrapper::makeIdxSlice(b),
-                                           CNDArrayWrapper::makeAllSlice(),
+        int64_t max_bins_for_trial = _raw_compute_interval_overlaps<F>(
+                movie_bin_wrapper.template slice<1>(CNDArrayWrapper::makeIdxSlice(b),
                                            CNDArrayWrapper::makeAllSlice()),
-                frame_ix_wrapper.slice(CNDArrayWrapper::makeIdxSlice(b),
-                                       CNDArrayWrapper::makeAllSlice(),
-                                       CNDArrayWrapper::makeAllSlice())
+                spike_bin_wrapper.template slice<1>(CNDArrayWrapper::makeIdxSlice(b),
+                                           CNDArrayWrapper::makeAllSlice()),
+                frame_ix_wrapper.template slice<2>(CNDArrayWrapper::makeIdxSlice(b),
+                                                   CNDArrayWrapper::makeAllSlice(),
+                                                   CNDArrayWrapper::makeAllSlice()),
+                frame_weight_wrapper.template slice<2>(CNDArrayWrapper::makeIdxSlice(b),
+                                              CNDArrayWrapper::makeAllSlice(),
+                                              CNDArrayWrapper::makeAllSlice())
         );
 
         max_bins_for_frame = std::max(max_bins_for_frame, max_bins_for_trial);
@@ -269,9 +271,9 @@ _batch_compute_interval_overlaps(ContigNPArray<F> batched_movie_bin_cutoffs,
     );
 
     ContigNPArray<F> backward_weights = ContigNPArray<F>(backward_weight_info);
-    CNDArrayWrapper::NDRawArrayWrapper<F, 3> backward_weight_wrapper(
+    CNDArrayWrapper::StaticNDArrayWrapper<F, 3> backward_weight_wrapper(
             static_cast<F *>(backward_weights.request().ptr),
-            std::array<F, 3>({batch, n_frames, max_bins_for_frame}));
+            std::array<int64_t, 3>({batch, n_frames, max_bins_for_frame}));
 
     auto backward_sel_info = py::buffer_info(
             nullptr,
@@ -284,24 +286,30 @@ _batch_compute_interval_overlaps(ContigNPArray<F> batched_movie_bin_cutoffs,
              static_cast<py::ssize_t>(sizeof(int64_t))} /* stride */
     );
     ContigNPArray<int64_t> backward_sel = ContigNPArray<int64_t>(backward_sel_info);
-    CNDArrayWrapper::NDRawArrayWrapper<int64_t, 3> backward_sel_wrapper(
+    CNDArrayWrapper::StaticNDArrayWrapper<int64_t, 3> backward_sel_wrapper(
             static_cast<int64_t *>(backward_sel.request().ptr),
             std::array<int64_t, 3>({batch, n_frames, max_bins_for_frame}));
 
-    for (int64_t i = 0; i < backward_sel_wrapper.shape[0]; ++i) {
-        for (int64_t j = 0; j < backward_sel_wrapper.shape[1]; ++j) {
-            backward_sel_wrapper.template storeTo(INVALID_FRAME, i, j);
+    for (int64_t b = 0; b < backward_sel_wrapper.shape[0]; ++b) {
+        for (int64_t i = 0; i < backward_sel_wrapper.shape[1]; ++i) {
+            for (int64_t j = 0; j < backward_sel_wrapper.shape[2]; ++j) {
+                backward_sel_wrapper.template storeTo(INVALID_FRAME, b, i, j);
+            }
         }
     }
 
     for (int64_t b = 0; b < batch; ++b) {
-        _raw_compute_backward_interval_overlaps(
-                movie_bin_wrapper,
-                spike_bin_wrapper,
-                backward_sel_wrapper.slice(CNDArrayWrapper::makeIdxSlice(batch),
-                                           CNDArrayWrapper::makeAllSlice()),
-                backward_weight_wrapper.slice(CNDArrayWrapper::makeIdxSlice(batch),
-                                              CNDArrayWrapper::makeAllSlice()));
+        _raw_compute_backward_interval_overlaps<F>(
+                movie_bin_wrapper.template slice<1>(CNDArrayWrapper::makeIdxSlice(batch),
+                                                    CNDArrayWrapper::makeAllSlice()),
+                spike_bin_wrapper.template slice<1>(CNDArrayWrapper::makeIdxSlice(batch),
+                                                    CNDArrayWrapper::makeAllSlice()),
+                backward_sel_wrapper.template slice<2>(CNDArrayWrapper::makeIdxSlice(batch),
+                                                       CNDArrayWrapper::makeAllSlice(),
+                                                       CNDArrayWrapper::makeAllSlice()),
+                backward_weight_wrapper.template slice<2>(CNDArrayWrapper::makeIdxSlice(batch),
+                                                          CNDArrayWrapper::makeAllSlice(),
+                                                          CNDArrayWrapper::makeAllSlice()));
     }
 
     return std::make_tuple(frame_ix, frame_weights, backward_sel, backward_weights);
