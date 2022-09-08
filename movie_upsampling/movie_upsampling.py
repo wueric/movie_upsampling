@@ -6,6 +6,7 @@ from typing import Optional, Tuple
 from . import upsampling_cpp_lib
 from . import torch_sparse_upsample_cuda
 from . import jitter_cuda
+from . import diff_upsample
 
 
 def compute_interval_overlaps(movie_cutoff_times: np.ndarray,
@@ -63,7 +64,7 @@ class JitterFrame(torch.autograd.Function):
         '''
 
         :param ctx:
-        :param batched_frames: shape (batch, height, width)
+        :param batched_frames: shape (batch, height, width) batched frames to upsample
         :param coordinates: shape (batch, n_jittered_frames, 2), torch.LongTensor dtype
         :return: shape (batch, n_jittered_frames, height, width)
         '''
@@ -82,3 +83,123 @@ class JitterFrame(torch.autograd.Function):
         grad_image = jitter_cuda.jitter_movie_backward(d_loss_d_output, coordinates)
 
         return grad_image, grad_coordinates
+
+
+class TimeUpsampleFlat(torch.autograd.Function):
+    '''
+    Wrapper for autograd function that performs forwards and backwards passes
+        for time-upsampling frames, where the upsample rate may be non-uniform
+
+    This upsamples a flat object; to upsample an actual movie frame
+        use TimeUpsampleMovie
+    '''
+
+    @staticmethod
+    def forward(ctx,
+                batch_input_frames: torch.Tensor,
+                batch_selection_ix: torch.Tensor,
+                batch_sel_weights: torch.Tensor,
+                backward_sel: torch.Tensor,
+                backward_weights: torch.Tensor) -> torch.Tensor:
+        '''
+
+        :param ctx:
+        :param batch_input_frames: shape (batch, n_frames_noupsample, n_pix), the flat frame that needs to be
+            upsampled. Note that each element in the batch is independently upsampled
+        :param batch_selection_ix: shape (batch, n_frames_upsample, 2), type int64_t, precomputed frame selection
+            indices into batch_input_frames. Value -1 specifies invalid frame idx
+        :param batch_sel_weights: shape (batch, n_frames_upsample, 2), weights for the frames specified in
+            batch_selection_ix, last dimension should be nonnegative and sum to 1
+        :param backward_sel: shape (batch, n_frames_noupsample, n_max_overlap), type int64_t, precomputed
+            frame selection for backward pass. Value -1 specifies invalid frame idx
+        :param backward_weights: shape (batch, n_frames_noupsample, n_max_overlap) weights for the frames specified
+            in backward_sel, last dimension should be nonnegative
+        :return:
+        '''
+
+        ctx.save_for_backward(batch_input_frames, batch_selection_ix, batch_sel_weights,
+                              backward_sel, backward_weights)
+        return diff_upsample.upsample_flat_forward(batch_input_frames,
+                                                   batch_selection_ix,
+                                                   batch_sel_weights)
+
+    @staticmethod
+    def backward(ctx,
+                 d_loss_d_upsample) -> Tuple[Optional[torch.Tensor], ...]:
+        '''
+
+        :param ctx:
+        :param d_loss_d_upsample:
+        :return:
+        '''
+
+        batch_input, batch_sel, batch_weights, backward_sel, backward_weights = ctx.saved_tensors
+        grad_sel, grad_weights, grad_bsel, grad_bweights = None, None, None, None
+
+        grad_noupsample = diff_upsample.upsample_flat_backward(d_loss_d_upsample,
+                                                               backward_sel,
+                                                               backward_weights)
+
+        return grad_noupsample, grad_sel, grad_weights, grad_bsel, grad_bweights
+
+
+class TimeUpsampleMovie(torch.autograd.Function):
+    '''
+    Wrapper for autograd function that performs forwards and backwards passes
+        for time-upsampling frames, where the upsample rate may be non-uniform
+
+    This one is for 2D movies
+    '''
+
+    @staticmethod
+    def forward(ctx,
+                batch_input_frames: torch.Tensor,
+                batch_selection_ix: torch.Tensor,
+                batch_sel_weights: torch.Tensor,
+                backward_sel: torch.Tensor,
+                backward_weights: torch.Tensor) -> torch.Tensor:
+        '''
+
+        :param ctx:
+        :param batch_input_frames: shape (batch, n_frames_noupsample, height, width), the flat frame that needs to be
+            upsampled. Note that each element in the batch is independently upsampled
+        :param batch_selection_ix: shape (batch, n_frames_upsample, 2), type int64_t, precomputed frame selection
+            indices into batch_input_frames. Value -1 specifies invalid frame idx
+        :param batch_sel_weights: shape (batch, n_frames_upsample, 2), weights for the frames specified in
+            batch_selection_ix, last dimension should be nonnegative and sum to 1
+        :param backward_sel: shape (batch, n_frames_noupsample, n_max_overlap), type int64_t, precomputed
+            frame selection for backward pass. Value -1 specifies invalid frame idx
+        :param backward_weights: shape (batch, n_frames_noupsample, n_max_overlap) weights for the frames specified
+            in backward_sel, last dimension should be nonnegative
+        :return:
+        '''
+
+        batch, n_frames_noupsample, height, width = batch_input_frames.shape
+        flat_input_frames = batch_input_frames.reshape(batch, n_frames_noupsample, height * width)
+
+        ctx.save_for_backward(batch_input_frames, batch_selection_ix, batch_sel_weights,
+                              backward_sel, backward_weights)
+        return diff_upsample.upsample_flat_forward(flat_input_frames,
+                                                   batch_selection_ix,
+                                                   batch_sel_weights)
+
+    @staticmethod
+    def backward(ctx,
+                 d_loss_d_upsample) -> Tuple[Optional[torch.Tensor], ...]:
+        '''
+
+        :param ctx:
+        :param d_loss_d_upsample:
+        :return:
+        '''
+
+        batch_input, batch_sel, batch_weights, backward_sel, backward_weights = ctx.saved_tensors
+        orig_batch, orig_n_frames_noupsample, orig_height, orig_width = batch_input.shape
+        grad_sel, grad_weights, grad_bsel, grad_bweights = None, None, None, None
+
+        grad_noupsample = diff_upsample.upsample_flat_backward(d_loss_d_upsample,
+                                                               backward_sel,
+                                                               backward_weights).reshape(
+            orig_batch, orig_n_frames_noupsample, orig_height, orig_width)
+
+        return grad_noupsample, grad_sel, grad_weights, grad_bsel, grad_bweights

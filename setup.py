@@ -105,6 +105,10 @@ ext_modules = [
         'movie_upsampling/jitter_cuda/jitter_cuda.cpp',
         'movie_upsampling/jitter_cuda/jitter.cu',
     ])
+    CUDAExtension('movie_upsampling.diff_upsample', [
+        'movie_upsampling/diff_upsample/diff_upsample_cuda.cpp',
+        'movie_upsampling/diff_upsample/diff_upsample.cu',
+    ])
 ]
 
 py_modules = [

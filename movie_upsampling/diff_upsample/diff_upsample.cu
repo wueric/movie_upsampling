@@ -53,7 +53,7 @@ __global__ void _cu_time_upsample_forward(
 }
 
 
-torch::Tensor upsample_flat_forward(torch::Tensor flat_noupsample,
+torch::Tensor _upsample_flat_forward(torch::Tensor flat_noupsample,
                                     torch::Tensor flat_selection,
                                     torch::Tensor flat_weights) {
     /*
@@ -140,7 +140,7 @@ __global__ void _cu_time_upsample_backward(
 }
 
 
-torch::Tensor upsample_flat_backward(torch::Tensor dloss_dflat_upsample,
+torch::Tensor _upsample_flat_backward(torch::Tensor dloss_dflat_upsample,
                                      torch::Tensor backward_selection,
                                      torch::Tensor backward_weights) {
 
@@ -185,141 +185,4 @@ torch::Tensor upsample_flat_backward(torch::Tensor dloss_dflat_upsample,
     });
 
     return dest;
-}
-
-
-template<typename scalar_t>
-__global__ void _cu_movie_time_upsample_forward(
-        const torch::PackedTensorAccessor<scalar_t, 4, torch::RestrictPtrTraits, size_t> frames_noupsample,
-        const torch::PackedTensorAccessor<int64_t, 3, torch::RestrictPtrTraits, size_t> frame_selection,
-        const torch::PackedTensorAccessor<scalar_t, 3, torch::RestrictPtrTraits, size_t> frame_weights,
-        torch::PackedTensorAccessor<scalar_t, 4, torch::RestrictPtrTraits, size_t> frames_upsample) {
-
-    const int64_t nframes_noupsample = frames_noupsample.size(1);
-    int64_t f_index = threadIdx.x + blockDim.x * blockIdx.y;
-    int64_t f_stride = blockDim.x * gridDim.y; // note that this is correct, since the block and grid dims don't
-    // mean the same thing in this implementation
-
-    const int64_t height = frames_noupsample.size(2);
-    int64_t h_index = threadIdx.y;
-    int64_t h_stride = blockDim.y;
-
-    const int64_t width = frames_noupsample.size(3);
-    int64_t w_index = threadIdx.z;
-    int64_t w_stride = blockDim.z;
-
-    int64_t b = blockIdx.x;
-
-    for (int64_t f = f_index; f < nframes_noupsample; f += f_stride) {
-        if (frame_selection[b][f][SECOND_OVERLAP] == INVALID_IDX) {
-            int64_t only_frame_ix = frame_selection[b][f][FIRST_OVERLAP];
-            for (int64_t h = h_index; h < height; h += h_stride) {
-                for (int64_t w = w_index; w < width; w += w_stride) {
-                    frames_upsample[b][f][h][w] = frames_noupsample[b][only_frame_ix][h][w]
-                }
-            }
-        } else {
-            int64_t first_frame_ix = frame_selection[b][f][FIRST_OVERLAP];
-            int64_t second_frame_ix = frame_selection[b][f][SECOND_OVERLAP];
-
-            scalar_t first_frame_w = frame_weights[b][f][FIRST_OVERLAP];
-            scalar_t second_frame_w = frame_weights[b][f][SECOND_OVERLAP];
-
-            for (int64_t h = h_index; h < height; h += h_stride) {
-                for (int64_t w = w_index; w < width; w += w_stride) {
-                    scalar_t first_val = frames_noupsample[b][first_frame_ix][h][w];
-                    scalar_t second_val = frames_noupsample[b][second_frame_ix][h][w];
-
-                    scalar_t write_val = first_val * first_frame_w + second_val * second_frame_w;
-                    frames_upsample[b][f][h][w] = write_val;
-                }
-            }
-        }
-    }
-}
-
-
-torch::Tensor upsample_movie_forward(torch::Tensor frames_noupsample,
-                                     torch::Tensor frame_selection,
-                                     torch::Tensor frame_weights) {
-    /*
-     * This function is meant to do the forward pass upsample during jittered natural
-     * image reconstruction. Since this function is targeted for reconstruction only, we make
-     * the following assumptions about the input sizes
-     *
-     *  (1) batch for frames_noupsample is relatively small, i.e. no more than 16 or so
-     *  (2) n_frames_upsample, the number of frames in the desired upsampled movie is also small,
-     *      i.e. no more than 1000 or so
-     *  (3) Most of the CUDA performance gains here will be achieved by parallelizing across height
-     *      and width
-     *  (4) Because the number of frames is relatively small, computing the interval overlap
-     *      should be computable easily on GPU
-     * @param frames_noupsample: shape (batch, n_frames_noupsample, height, width)
-     * @param frame_selection: shape (batch, n_frames_upsample, 2), int64_t
-     * @param frame_weights: shape (batch, n_frames_upsample, 2)
-     */
-
-    const int64_t batch = frames_noupsample.size(0);
-    const int64_t nframes_noupsample = frames_noupsample.size(1);
-    const int64_t height = frames_noupsample.size(2);
-    const int64_t width = frames_noupsample.size(3);
-
-    const int64_t nframes_upsample = frame_selection.size(1);
-
-    auto options = torch::TensorOptions()
-            .dtype(a_tens.dtype())
-            .layout(torch::kStrided)
-            .device(a_tens.device());
-    torch::Tensor dest = torch.zeros(std::vector<int64_t>({batch, nframes_upsample, height, width}), options);
-
-    const int64_t threads_per_time = 4;
-    const dim3 threads(threads_per_time, 16, 16);
-    const dim3 blocks(batch, (n_frames_upsample + threads_per_time - 1) / threads_per_time);
-
-    AT_DISPATCH_FLOATING_TYPES_AND_HALF(dest.scalar_type(), "_cu_movie_time_upsample_forward", [&] {
-        _cu_movie_time_upsample_forward<scalar_t><<<blocks, threads>>>(
-                frames_noupsample.packed_accessor<scalar_t, 4, torch::RestrictPtrTraits, size_t>(),
-                frame_selection.packed_accessor<int64_t, 3, torch::RestrictPtrTraits, size_t>(),
-                frame_weights.packed_accessor<scalar_t, 3, torch::RestrictPtrTraits, size_t>(),
-                dest.packed_accessor<scalar_t, 4, torch::RestrictPtrTraits, size_t>());
-    });
-
-    return dest;
-}
-
-
-template<typename scalar_t>
-__global__ void _cu_movie_time_upsample_backward(
-        const torch::PackedTensorAccessor<scalar_t, 4, torch::RestrictPtrTraits, size_t> d_loss_d_upsample,
-        const torch::PackedTensorAccessor<int64_t, 3, torch::RestrictPtrTraits, size_t> frame_selection,
-        const torch::PackedTensorAccessor<scalar_t, 3, torch::RestrictPtrTraits, size_t> frame_weights,
-        torch::PackedTensorAccessor<scalar_t, 4, torch::RestrictPtrTraits, size_t> d_loss_d_noupsample) {
-    /*
-     * To avoid race conditions, we have to
-     */
-
-    int64_t index = blockIdx.x * blockDim.x + threadIdx.x;
-    int64_t stride = blockDim.x * gridDim.x;
-
-    const int64_t n_us_frames = d_loss_d_upsample.size(0);
-    const int64_t height = d_loss_d_upsample.size(1);
-    const int64_t width = d_loss_d_upsample.size(2);
-
-
-}
-
-
-torch::Tensor upsample_spare_movie_backward(torch::Tensor d_loss_d_upsample,
-                                            torch::Tensor frame_selection,
-                                            torch::Tensor frame_weights,
-                                            torch::Tensor d_loss_d_noupsample) {
-    /*
-     * To avoid race conditions for writing values into d_loss_d_noupsample, we have
-     *  to make sure that each entry in d_loss_d_noupsample is written to by
-     *  exactly one thread only.
-     *
-     *
-     *  @param d_loss_d_upsample, shape (batch, n_upsampled_frames, height, width)
-     */
-
 }
