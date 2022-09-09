@@ -83,4 +83,6 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m
 ) {
 m.def("upsample_flat_forward", &upsample_flat_forward, "Upsample movie forward pass");
 m.def("upsample_flat_backward", &upsample_flat_backward, "Upsample movie backward pass");
+m.def("upsample_transpose_flat_forward", &upsample_flat_forward, "Upsample movie forward pass");
+m.def("upsample_transpose_flat_backward", &upsample_flat_backward, "Upsample movie backward pass");
 }
