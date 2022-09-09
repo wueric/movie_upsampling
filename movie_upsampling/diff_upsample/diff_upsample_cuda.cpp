@@ -41,9 +41,43 @@ torch::Tensor upsample_flat_backward(torch::Tensor dloss_dflat_upsample,
     CHECK_INPUT(backward_weights);
 
     const at::cuda::OptionalCUDAGuard device_guard(device_of(dloss_dflat_upsample));
-    return _upsample_flat_forward(dloss_dflat_upsample, backward_selection, backward_weights);
+    return _upsample_flat_backward(dloss_dflat_upsample, backward_selection, backward_weights);
 }
 
+
+torch::Tensor _upsample_transpose_flat_forward(torch::Tensor flat_noupsample,
+                                               torch::Tensor flat_selection,
+                                               torch::Tensor flat_weights);
+
+
+torch::Tensor upsample_transpose_flat_forward(torch::Tensor flat_noupsample,
+                                               torch::Tensor flat_selection,
+                                               torch::Tensor flat_weights) {
+    CHECK_INPUT(flat_noupsample);
+    CHECK_INPUT(flat_selection);
+    CHECK_INPUT(flat_weights);
+
+    const at::cuda::OptionalCUDAGuard device_guard(device_of(flat_noupsample));
+    return _upsample_transpose_flat_forward(flat_noupsample, flat_selection, flat_weights);
+}
+
+
+torch::Tensor _upsample_transpose_flat_backward(torch::Tensor dloss_dflat_upsample,
+                                                torch::Tensor backward_selection,
+                                                torch::Tensor backward_weights);
+
+
+
+torch::Tensor upsample_transpose_flat_backward(torch::Tensor dloss_dflat_upsample,
+                                                torch::Tensor backward_selection,
+                                                torch::Tensor backward_weights) {
+    CHECK_INPUT(dloss_dflat_upsample);
+    CHECK_INPUT(backward_selection);
+    CHECK_INPUT(backward_weights);
+
+    const at::cuda::OptionalCUDAGuard device_guard(device_of(dloss_dflat_upsample));
+    return _upsample_transpose_flat_backward(dloss_dflat_upsample, backward_selection, backward_weights);
+}
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m
 ) {
