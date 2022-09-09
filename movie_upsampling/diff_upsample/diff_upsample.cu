@@ -15,17 +15,17 @@ __global__ void _cu_time_upsample_forward(
         const torch::PackedTensorAccessor<scalar_t, 3, torch::RestrictPtrTraits, size_t> flat_weights,
         torch::PackedTensorAccessor<scalar_t, 3, torch::RestrictPtrTraits, size_t> flat_upsample) {
 
-    const int64_t nframes_noupsample = flat_noupsample.size(1);
+    const int64_t nframes_upsample = flat_selection.size(1);
     int64_t f_index = threadIdx.y + blockIdx.y * blockDim.y;
     int64_t f_stride = blockDim.y * gridDim.y;
 
     const int64_t n_pix = flat_noupsample.size(2);
-    int64_t p_index = threadIdx.z + blockIdx.z * blockDim.z;
-    int64_t p_stride = blockDim.z * gridDim.z;
+    int64_t p_index = threadIdx.x + blockIdx.x * blockDim.x;
+    int64_t p_stride = blockDim.x * gridDim.x;
 
-    int64_t b = blockIdx.x;
+    int64_t b = threadIdx.z + blockIdx.z * gridDim.z;
 
-    for (int64_t f = f_index; f < nframes_noupsample, f+= f_stride) {
+    for (int64_t f = f_index; f < nframes_upsample; f += f_stride) {
         if (flat_selection[b][f][SECOND_OVERLAP] == INVALID_IDX) {
             int64_t only_frame_ix = flat_selection[b][f][FIRST_OVERLAP];
 
@@ -83,20 +83,26 @@ torch::Tensor _upsample_flat_forward(torch::Tensor flat_noupsample,
     const int64_t nframes_upsample = flat_selection.size(1);
 
     auto options = torch::TensorOptions()
-            .dtype(a_tens.dtype())
+            .dtype(flat_noupsample.dtype())
             .layout(torch::kStrided)
-            .device(a_tens.device());
-    torch::Tensor dest = torch.zeros(std::vector<int64_t>({batch, nframes_upsample, n_pix}), options);
+            .device(flat_noupsample.device());
+    torch::Tensor dest = torch::zeros(std::vector<int64_t>({batch, nframes_upsample, n_pix}), options);
 
-    const int64_t threads_per_time = 4;
-    const dim3 threads(1, threads_per_time, 256);
-    const dim3 blocks(batch, (n_frames_upsample + threads_per_time - 1) / threads_per_time, 1);
+    const int64_t threads_per_time = 16;
+
+    // order is pixel, time, batch
+
+    const dim3 threads(32, threads_per_time, 1);
+    const dim3 blocks(1, (nframes_upsample + threads_per_time - 1) / threads_per_time, batch);
+
+    //const dim3 threads(1, threads_per_time, 32);
+    //const dim3 blocks(batch, (nframes_upsample + threads_per_time - 1) / threads_per_time, 1);
 
     AT_DISPATCH_FLOATING_TYPES_AND_HALF(dest.scalar_type(), "_cu_time_upsample_forward", [&] {
         _cu_time_upsample_forward<scalar_t><<<blocks, threads>>>(
-                frames_noupsample.packed_accessor<scalar_t, 3, torch::RestrictPtrTraits, size_t>(),
-                frame_selection.packed_accessor<int64_t, 3, torch::RestrictPtrTraits, size_t>(),
-                frame_weights.packed_accessor<scalar_t, 3, torch::RestrictPtrTraits, size_t>(),
+                flat_noupsample.packed_accessor<scalar_t, 3, torch::RestrictPtrTraits, size_t>(),
+                flat_selection.packed_accessor<int64_t, 3, torch::RestrictPtrTraits, size_t>(),
+                flat_weights.packed_accessor<scalar_t, 3, torch::RestrictPtrTraits, size_t>(),
                 dest.packed_accessor<scalar_t, 3, torch::RestrictPtrTraits, size_t>());
     });
 
@@ -111,7 +117,7 @@ __global__ void _cu_time_upsample_backward(
         const torch::PackedTensorAccessor<scalar_t, 3, torch::RestrictPtrTraits, size_t> backward_weights,
         torch::PackedTensorAccessor<scalar_t, 3, torch::RestrictPtrTraits, size_t> dloss_dnoupsample) {
 
-    int64_t b = blockIdx.x;
+    int64_t b = threadIdx.z + blockIdx.z * blockDim.z;
 
     const int64_t n_frames_upsample = dloss_dupsample.size(1);
     const int64_t n_frames_noupsample = backward_selection.size(1);
@@ -119,8 +125,8 @@ __global__ void _cu_time_upsample_backward(
     int64_t f_stride = blockDim.y * gridDim.y;
 
     const int64_t n_pix = dloss_dupsample.size(2);
-    int64_t p_index = threadIdx.z + blockIdx.z * blockDim.z;
-    int64_t p_stride = blockDim.z * gridDim.z;
+    int64_t p_index = threadIdx.x + blockIdx.x * blockDim.x;
+    int64_t p_stride = blockDim.x * gridDim.x;
 
     const int64_t max_overlap_frames = backward_selection.size(2);
     for (int64_t f = f_index; f < n_frames_noupsample; f += f_stride) {
@@ -167,14 +173,19 @@ torch::Tensor _upsample_flat_backward(torch::Tensor dloss_dflat_upsample,
     const int64_t n_pix = dloss_dflat_upsample.size(2);
 
     auto options = torch::TensorOptions()
-            .dtype(a_tens.dtype())
+            .dtype(dloss_dflat_upsample.dtype())
             .layout(torch::kStrided)
-            .device(a_tens.device());
-    torch::Tensor dest = torch.zeros(std::vector<int64_t>({batch, n_frames_noupsample, n_pix}), options);
+            .device(dloss_dflat_upsample.device());
+    torch::Tensor dest = torch::zeros(std::vector<int64_t>({batch, nframes_noupsample, n_pix}), options);
 
     const int64_t threads_per_time = 4;
-    const dim3 threads(1, threads_per_time, 256);
-    const dim3 blocks(batch, (nframes_noupsample + threads_per_time - 1) / threads_per_time, 1);
+
+    // order is pixel, time, batch
+    const dim3 threads(64, threads_per_time, 1);
+    const dim3 blocks(1, (nframes_noupsample + threads_per_time - 1), batch);
+
+    //const dim3 threads(1, threads_per_time, 32);
+    //const dim3 blocks(batch, (nframes_noupsample + threads_per_time - 1) / threads_per_time, 1);
 
     AT_DISPATCH_FLOATING_TYPES_AND_HALF(dest.scalar_type(), "_cu_time_upsample_backward", [&] {
         _cu_time_upsample_backward<scalar_t><<<blocks, threads>>>(

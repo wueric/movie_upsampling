@@ -22,6 +22,21 @@ def compute_interval_overlaps(movie_cutoff_times: np.ndarray,
     return upsampling_cpp_lib._compute_interval_overlaps(movie_cutoff_times, spike_bin_cutoff_times)
 
 
+def batch_compute_interval_overlaps(batched_movie_cutoffs: np.ndarray,
+                                    batched_spike_cutoffs: np.ndarray) \
+        -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    '''
+
+    :param batched_movie_cutoffs: shape (batch, n_frame_cutoffs = n_frames + 1)
+    :param batched_spike_cutoffs: shape (batch, n_bin_cutoffs = n_bins + 1)
+    :return:
+    '''
+
+    return upsampling_cpp_lib._batch_compute_interval_overlaps(batched_movie_cutoffs, batched_spike_cutoffs)
+
+    pass
+
+
 def movie_sparse_upsample_cuda(movie_frames: torch.Tensor,
                                frame_selection: torch.Tensor,
                                frame_weights: torch.Tensor) -> torch.Tensor:
@@ -75,8 +90,6 @@ class JitterFrame(torch.autograd.Function):
     @staticmethod
     def backward(ctx,
                  d_loss_d_output: torch.Tensor) -> Tuple[Optional[torch.Tensor], ...]:
-
-
         input_frames, coordinates = ctx.saved_tensors
         grad_coordinates = None
 
@@ -181,7 +194,7 @@ class TimeUpsampleMovie(torch.autograd.Function):
                               backward_sel, backward_weights)
         return diff_upsample.upsample_flat_forward(flat_input_frames,
                                                    batch_selection_ix,
-                                                   batch_sel_weights)
+                                                   batch_sel_weights).reshape(batch, -1, height, width)
 
     @staticmethod
     def backward(ctx,
@@ -197,9 +210,11 @@ class TimeUpsampleMovie(torch.autograd.Function):
         orig_batch, orig_n_frames_noupsample, orig_height, orig_width = batch_input.shape
         grad_sel, grad_weights, grad_bsel, grad_bweights = None, None, None, None
 
-        grad_noupsample = diff_upsample.upsample_flat_backward(d_loss_d_upsample,
-                                                               backward_sel,
-                                                               backward_weights).reshape(
+        grad_noupsample_unshape = diff_upsample.upsample_flat_backward(
+            d_loss_d_upsample.reshape(orig_batch, -1, orig_height * orig_width),
+            backward_sel,
+            backward_weights)
+        grad_noupsample = grad_noupsample_unshape.reshape(
             orig_batch, orig_n_frames_noupsample, orig_height, orig_width)
 
         return grad_noupsample, grad_sel, grad_weights, grad_bsel, grad_bweights

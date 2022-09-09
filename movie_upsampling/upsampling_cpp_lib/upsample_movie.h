@@ -14,6 +14,7 @@
 #include <cstdint>
 #include <vector>
 #include <tuple>
+#include <iostream>
 
 #include "NDArrayWrapper.h"
 
@@ -112,10 +113,10 @@ void _raw_compute_backward_interval_overlaps(
         T frame_end = movie_bin_cutoffs.template valueAt(mv + 1);
 
         // find the first spike bin for which this overlaps
-        while (spike_bin_cutoffs.template valueAt(sbin + 1) < frame_start) ++sbin;
+        while ((sbin < n_spike_bins - 1) && spike_bin_cutoffs.template valueAt(sbin + 1) < frame_start) ++sbin;
 
         int64_t overlap_count = 0;
-        while (overlap_count < max_n_overlaps && sbin < (n_spike_bins + 1) &&
+        while (overlap_count < max_n_overlaps && sbin < (n_spike_bins) &&
                spike_bin_cutoffs.template valueAt(sbin) <= frame_end) {
 
             T low = spike_bin_cutoffs.template valueAt(sbin);
@@ -263,7 +264,7 @@ _batch_compute_interval_overlaps(ContigNPArray<F> batched_movie_bin_cutoffs,
             nullptr,
             sizeof(F),
             py::format_descriptor<F>::value,
-            2, /* How many dimensions */
+            3, /* How many dimensions */
             {batch, static_cast<py::ssize_t>(n_frames), static_cast<py::ssize_t>(max_bins_for_frame)}, /* shape */
             {static_cast<py::ssize_t> (sizeof(F) * max_bins_for_frame * n_frames),
              static_cast<py::ssize_t>(max_bins_for_frame * sizeof(F)),
@@ -279,7 +280,7 @@ _batch_compute_interval_overlaps(ContigNPArray<F> batched_movie_bin_cutoffs,
             nullptr,
             sizeof(int64_t),
             py::format_descriptor<int64_t>::value,
-            2, /* How many dimensions */
+            3, /* How many dimensions */
             {batch, static_cast<py::ssize_t>(n_frames), static_cast<py::ssize_t>(max_bins_for_frame)}, /* shape */
             {static_cast<py::ssize_t> (sizeof(int64_t) * max_bins_for_frame * n_frames),
              static_cast<py::ssize_t>(max_bins_for_frame * sizeof(int64_t)),
@@ -300,14 +301,14 @@ _batch_compute_interval_overlaps(ContigNPArray<F> batched_movie_bin_cutoffs,
 
     for (int64_t b = 0; b < batch; ++b) {
         _raw_compute_backward_interval_overlaps<F>(
-                movie_bin_wrapper.template slice<1>(CNDArrayWrapper::makeIdxSlice(batch),
+                movie_bin_wrapper.template slice<1>(CNDArrayWrapper::makeIdxSlice(b),
                                                     CNDArrayWrapper::makeAllSlice()),
-                spike_bin_wrapper.template slice<1>(CNDArrayWrapper::makeIdxSlice(batch),
+                spike_bin_wrapper.template slice<1>(CNDArrayWrapper::makeIdxSlice(b),
                                                     CNDArrayWrapper::makeAllSlice()),
-                backward_sel_wrapper.template slice<2>(CNDArrayWrapper::makeIdxSlice(batch),
+                backward_sel_wrapper.template slice<2>(CNDArrayWrapper::makeIdxSlice(b),
                                                        CNDArrayWrapper::makeAllSlice(),
                                                        CNDArrayWrapper::makeAllSlice()),
-                backward_weight_wrapper.template slice<2>(CNDArrayWrapper::makeIdxSlice(batch),
+                backward_weight_wrapper.template slice<2>(CNDArrayWrapper::makeIdxSlice(b),
                                                           CNDArrayWrapper::makeAllSlice(),
                                                           CNDArrayWrapper::makeAllSlice()));
     }
