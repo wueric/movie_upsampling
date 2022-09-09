@@ -338,7 +338,7 @@ torch::Tensor _upsample_transpose_flat_backward(torch::Tensor dloss_dflat_upsamp
 
     const int64_t batch = dloss_dflat_upsample.size(0);
     const int64_t nframes_noupsample = backward_selection.size(1);
-    const int64_t n_pix = dloss_dflat_upsample.size(2);
+    const int64_t n_pix = dloss_dflat_upsample.size(1);
 
     auto options = torch::TensorOptions()
             .dtype(dloss_dflat_upsample.dtype())

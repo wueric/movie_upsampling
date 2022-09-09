@@ -317,7 +317,7 @@ class TimeUpsampleTransposeMovie(torch.autograd.Function):
         orig_batch, orig_n_frames_noupsample, orig_height, orig_width = batch_input.shape
         grad_sel, grad_weights, grad_bsel, grad_bweights = None, None, None, None
 
-        grad_noupsample_unshape = diff_upsample.upsample_flat_backward(
+        grad_noupsample_unshape = diff_upsample.upsample_transpose_flat_backward(
             d_loss_d_upsample.reshape(orig_batch, orig_height * orig_width, -1),
             backward_sel,
             backward_weights)
