@@ -50,7 +50,7 @@ int64_t _raw_compute_interval_overlaps(CNDArrayWrapper::StaticNDArrayWrapper<T, 
          * frame so that we can compute the overlap selection and weights for the backward pass
          */
         int64_t frame_low = frame_idx;
-        while (frame_low < (n_frames - 1) && movie_bin_cutoffs.valueAt(frame_low + 1) < low) ++frame_low;
+        while ((frame_low < (n_frames - 1)) && (movie_bin_cutoffs.valueAt(frame_low + 1) < low)) ++frame_low;
 
         int64_t frame_high = frame_low;
         float curr_frame_start = movie_bin_cutoffs.valueAt(frame_high);

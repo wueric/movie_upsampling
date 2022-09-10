@@ -12,12 +12,20 @@ from . import diff_upsample
 def compute_interval_overlaps(movie_cutoff_times: np.ndarray,
                               spike_bin_cutoff_times: np.ndarray):
     '''
-    Upsamples the movie and transposes the time axis from first to last
+    Assumes spike_bin_cutoff_times[0] >= movie_cutoff_times[0] and
+        spike_bin_cutoff_times[-1] <= spike_bin_cutoff_times[-1]
+
+    This is because it does not make sense to include empty frames
+        in the upsample, since empty frames are incorrect and mean
+        that we did not get enough frames from the data
 
     :param movie_cutoff_times: shape (n_frames + 1, )
     :param spike_bin_cutoff_times: shape (n_bins + 1, )
     :return: shape (height, width, n_bins)
     '''
+
+    assert movie_cutoff_times[0] <= spike_bin_cutoff_times[0]
+    assert spike_bin_cutoff_times[-1] <= movie_cutoff_times[-1]
 
     return upsampling_cpp_lib._compute_interval_overlaps(movie_cutoff_times, spike_bin_cutoff_times)
 
@@ -26,15 +34,21 @@ def batch_compute_interval_overlaps(batched_movie_cutoffs: np.ndarray,
                                     batched_spike_cutoffs: np.ndarray) \
         -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     '''
+    Assumes spike_bin_cutoff_times[i, 0] >= movie_cutoff_times[i, 0] and
+        spike_bin_cutoff_times[i, -1] <= spike_bin_cutoff_times[i, -1]
+
+    This is because it does not make sense to include empty frames
+        in the upsample, since empty frames are incorrect and mean
+        that we did not get enough frames from the data
 
     :param batched_movie_cutoffs: shape (batch, n_frame_cutoffs = n_frames + 1)
     :param batched_spike_cutoffs: shape (batch, n_bin_cutoffs = n_bins + 1)
     :return:
     '''
+    assert np.all(batched_movie_cutoffs[:, 0] <= batched_spike_cutoffs[:, 0])
+    assert np.all(batched_spike_cutoffs[:, -1] <= batched_movie_cutoffs[:, -1])
 
     return upsampling_cpp_lib._batch_compute_interval_overlaps(batched_movie_cutoffs, batched_spike_cutoffs)
-
-    pass
 
 
 def movie_sparse_upsample_cuda(movie_frames: torch.Tensor,
