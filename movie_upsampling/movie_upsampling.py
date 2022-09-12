@@ -195,7 +195,7 @@ class TimeUpsampleTransposeFlat(torch.autograd.Function):
         :return: shape (batch, n_pix, n_frames_upsample)
         '''
         batch, n_frames_no_upsample, n_pix = batch_input_frames.shape
-        n_frames_upsample = batch_selection_ix[1]
+        n_frames_upsample = batch_selection_ix.shape[1]
 
         assert batch_selection_ix.shape == (batch, n_frames_upsample, 2)
         assert batch_sel_weights.shape == (batch, n_frames_upsample, 2)
