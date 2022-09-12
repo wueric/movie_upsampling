@@ -194,6 +194,13 @@ class TimeUpsampleTransposeFlat(torch.autograd.Function):
             in backward_sel, last dimension should be nonnegative
         :return: shape (batch, n_pix, n_frames_upsample)
         '''
+        batch, n_frames_no_upsample, n_pix = batch_input_frames.shape
+        n_frames_upsample = batch_selection_ix[1]
+
+        assert batch_selection_ix.shape == (batch, n_frames_upsample, 2)
+        assert batch_sel_weights.shape == (batch, n_frames_upsample, 2)
+        assert backward_sel.shape[:2] == (batch, n_frames_no_upsample)
+        assert backward_weights.shape[:2] == (batch, n_frames_no_upsample)
 
         ctx.save_for_backward(batch_input_frames, batch_selection_ix, batch_sel_weights,
                               backward_sel, backward_weights)
