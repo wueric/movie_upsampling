@@ -212,7 +212,8 @@ __global__ void _cu_time_upsample_transpose_forward(
     int64_t p_index = threadIdx.x + blockIdx.x * blockDim.x;
     int64_t p_stride = blockDim.x * gridDim.x;
 
-    int64_t b = threadIdx.z + blockIdx.z * gridDim.z;
+    int64_t b = threadIdx.z + blockIdx.z * blockDim.z;
+
     for (int64_t f = f_index; f < nframes_upsample; f += f_stride) {
         if (flat_selection[b][f][SECOND_OVERLAP] == INVALID_IDX) {
             int64_t only_frame_ix = flat_selection[b][f][FIRST_OVERLAP];
