@@ -299,7 +299,6 @@ __global__ void _cu_time_upsample_transpose_backward(
 
     int64_t b = threadIdx.z + blockIdx.z * blockDim.z;
 
-    const int64_t n_frames_upsample = dloss_dupsample.size(2);
     const int64_t n_frames_noupsample = backward_selection.size(1);
     int64_t f_index = threadIdx.y + blockIdx.y * blockDim.y;
     int64_t f_stride = blockDim.y * gridDim.y;
@@ -316,9 +315,9 @@ __global__ void _cu_time_upsample_transpose_backward(
             for (int64_t ix = 0; ix < max_overlap_frames; ++ix) {
 
                 int64_t read_from_ix = backward_selection[b][f][ix];
-                if (read_from_ix == INVALID_IDX) break;
-
-                acc += (dloss_dupsample[b][p][read_from_ix] * backward_weights[b][f][ix]);
+                if (read_from_ix != INVALID_IDX) {
+                    acc += (dloss_dupsample[b][p][read_from_ix] * backward_weights[b][f][ix]);
+                }
             }
             dloss_dnoupsample[b][f][p] = acc;
         }
@@ -347,11 +346,11 @@ torch::Tensor _upsample_transpose_flat_backward(torch::Tensor dloss_dflat_upsamp
             .device(dloss_dflat_upsample.device());
     torch::Tensor dest = torch::zeros(std::vector<int64_t>({batch, nframes_noupsample, n_pix}), options);
 
-    const int64_t threads_per_time = 4;
+    const int64_t threads_per_time = 8;
 
     // order is pixel, time, batch
     const dim3 threads(64, threads_per_time, 1);
-    const dim3 blocks(1, (nframes_noupsample + threads_per_time - 1), batch);
+    const dim3 blocks(1, (nframes_noupsample + threads_per_time - 1) / threads_per_time, batch);
 
     AT_DISPATCH_FLOATING_TYPES_AND_HALF(dest.scalar_type(), "_cu_time_upsample_transpose_backward", [&] {
         _cu_time_upsample_transpose_backward<scalar_t><<<blocks, threads>>>(
