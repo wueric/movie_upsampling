@@ -310,16 +310,12 @@ __global__ void _cu_time_upsample_transpose_backward(
     const int64_t max_overlap_frames = backward_selection.size(2);
     for (int64_t f = f_index; f < n_frames_noupsample; f += f_stride) {
         for (int64_t p = p_index; p < n_pix; p += p_stride) {
-
-            scalar_t acc = 0.0;
             for (int64_t ix = 0; ix < max_overlap_frames; ++ix) {
-
                 int64_t read_from_ix = backward_selection[b][f][ix];
                 if (read_from_ix != INVALID_IDX) {
-                    acc += (dloss_dupsample[b][p][read_from_ix] * backward_weights[b][f][ix]);
+                    dloss_dnoupsample[b][f][p] += (dloss_dupsample[b][p][read_from_ix] * backward_weights[b][f][ix]);
                 }
             }
-            dloss_dnoupsample[b][f][p] = acc;
         }
     }
 }
@@ -349,7 +345,7 @@ torch::Tensor _upsample_transpose_flat_backward(torch::Tensor dloss_dflat_upsamp
     const int64_t threads_per_time = 8;
 
     // order is pixel, time, batch
-    const dim3 threads(64, threads_per_time, 1);
+    const dim3 threads(128, threads_per_time, 1);
     const dim3 blocks(1, (nframes_noupsample + threads_per_time - 1) / threads_per_time, batch);
 
     AT_DISPATCH_FLOATING_TYPES_AND_HALF(dest.scalar_type(), "_cu_time_upsample_transpose_backward", [&] {
