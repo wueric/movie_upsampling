@@ -214,29 +214,23 @@ __global__ void _cu_time_upsample_transpose_forward(
 
     int64_t b = threadIdx.z + blockIdx.z * blockDim.z;
 
+    const scalar_t ZERO = 0.0;
+
     for (int64_t f = f_index; f < nframes_upsample; f += f_stride) {
-        if (flat_selection[b][f][SECOND_OVERLAP] == INVALID_IDX) {
-            int64_t only_frame_ix = flat_selection[b][f][FIRST_OVERLAP];
 
-            for (int64_t p = p_index; p < n_pix; p += p_stride) {
-                flat_upsample[b][p][f] = flat_noupsample[b][only_frame_ix][p];
-            }
-        } else {
+        int64_t first_frame_ix = flat_selection[b][f][FIRST_OVERLAP];
+        int64_t second_frame_ix = flat_selection[b][f][SECOND_OVERLAP];
 
-            int64_t first_frame_ix = flat_selection[b][f][FIRST_OVERLAP];
-            int64_t second_frame_ix = flat_selection[b][f][SECOND_OVERLAP];
+        scalar_t first_frame_w = flat_weights[b][f][FIRST_OVERLAP];
+        scalar_t second_frame_w = (second_frame_ix != INVALID_IDX) ? flat_weights[b][f][SECOND_OVERLAP] : ZERO;
 
-            scalar_t first_frame_w = flat_weights[b][f][FIRST_OVERLAP];
-            scalar_t second_frame_w = flat_weights[b][f][SECOND_OVERLAP];
+        for (int64_t p = p_index; p < n_pix; p += p_stride) {
 
-            for (int64_t p = p_index; p < n_pix; p += p_stride) {
+            scalar_t first_val = flat_noupsample[b][first_frame_ix][p];
+            scalar_t second_val = flat_noupsample[b][second_frame_ix][p];
 
-                scalar_t first_val = flat_noupsample[b][first_frame_ix][p];
-                scalar_t second_val = flat_noupsample[b][second_frame_ix][p];
-
-                scalar_t write_val = first_val * first_frame_w + second_val * second_frame_w;
-                flat_upsample[b][p][f] = write_val;
-            }
+            scalar_t write_val = first_val * first_frame_w + second_val * second_frame_w;
+            flat_upsample[b][p][f] = write_val;
         }
     }
 }
@@ -271,7 +265,7 @@ torch::Tensor _upsample_transpose_flat_forward(torch::Tensor flat_noupsample,
             .dtype(flat_noupsample.dtype())
             .layout(torch::kStrided)
             .device(flat_noupsample.device());
-    torch::Tensor dest = torch::zeros(std::vector<int64_t>({batch, n_pix, nframes_upsample}), options);
+    torch::Tensor dest = torch::empty(std::vector<int64_t>({batch, n_pix, nframes_upsample}), options);
 
     const int64_t threads_per_time = 16;
 

@@ -98,16 +98,47 @@ class JitterFrame(torch.autograd.Function):
         :return: shape (batch, n_jittered_frames, height, width)
         '''
 
-        ctx.save_for_backward(input_frames, coordinates)
+        ctx.save_for_backward(coordinates)
         return jitter_cuda.jitter_movie_forward(input_frames, coordinates)
 
     @staticmethod
     def backward(ctx,
                  d_loss_d_output: torch.Tensor) -> Tuple[Optional[torch.Tensor], ...]:
-        input_frames, coordinates = ctx.saved_tensors
+        coordinates, = ctx.saved_tensors
+        grad_coordinates = None
+        grad_image = jitter_cuda.jitter_movie_backward(d_loss_d_output, coordinates)
+
+        return grad_image, grad_coordinates
+
+
+class JitterOnlyFrame(torch.autograd.Function):
+    '''
+    Wrapper for autograd function that performs forward and backward
+        passes for jittering frames
+    '''
+
+    @staticmethod
+    def forward(ctx,
+                input_frames: torch.Tensor,
+                coordinates: torch.Tensor) -> torch.Tensor:
+        '''
+
+        :param ctx:
+        :param batched_frames: shape (batch, n_jittered_frames, height, width) batched frames to upsample
+        :param coordinates: shape (batch, n_jittered_frames, 2), torch.LongTensor dtype
+        :return: shape (batch, n_jittered_frames, height, width)
+        '''
+
+        ctx.save_for_backward(coordinates)
+        return jitter_cuda.jitter_frames_only_forward(input_frames, coordinates)
+
+    @staticmethod
+    def backward(ctx,
+                 d_loss_d_output: torch.Tensor) -> Tuple[Optional[torch.Tensor], ...]:
+        coordinates, = ctx.saved_tensors
         grad_coordinates = None
 
-        grad_image = jitter_cuda.jitter_movie_backward(d_loss_d_output, coordinates)
+        grad_image = jitter_cuda.jitter_frames_only_backward(d_loss_d_output, coordinates)
 
         return grad_image, grad_coordinates
 

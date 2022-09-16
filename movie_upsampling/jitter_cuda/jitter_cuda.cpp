@@ -29,6 +29,7 @@ torch::Tensor jitter_movie_forward(torch::Tensor movie_frames,
     return _jitter_frames_forward(movie_frames, jitter_coordinates);
 }
 
+
 torch::Tensor _jitter_frames_backward(torch::Tensor d_output_d_jittered_frames,
                                       torch::Tensor jitter_coords);
 
@@ -43,9 +44,40 @@ torch::Tensor jitter_movie_backward(torch::Tensor d_output_d_jittered_frames,
 }
 
 
+torch::Tensor _jitter_frames_only_forward(torch::Tensor repeated_frames,
+                                          torch::Tensor jitter_coords);
+
+
+torch::Tensor jitter_frames_only_forward(torch::Tensor repeated_frames,
+                                         torch::Tensor jitter_coords) {
+
+    CHECK_INPUT(repeated_frames);
+    CHECK_INPUT(jitter_coords);
+
+    return _jitter_frames_only_forward(repeated_frames, jitter_coords);
+}
+
+
+torch::Tensor _jitter_frames_only_backward(torch::Tensor d_output_d_jittered_frames,
+                                           torch::Tensor jitter_coords);
+
+
+torch::Tensor jitter_frames_only_backward(torch::Tensor d_output_d_jittered_frames,
+                                           torch::Tensor jitter_coords) {
+
+    CHECK_INPUT(d_output_d_jittered_frames);
+    CHECK_INPUT(jitter_coords);
+
+    return _jitter_frames_only_backward(d_output_d_jittered_frames, jitter_coords);
+}
+
+
+
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m
 ) {
 m.def("jitter_movie_forward", &jitter_movie_forward, "Jitter movie forward pass");
 m.def("jitter_movie_backward", &jitter_movie_backward, "Jitter movie backward pass");
+m.def("jitter_frames_only_forward", &jitter_frames_only_forward, "Jitter repeated frames forward pass");
+m.def("jitter_frames_only_backward", &jitter_frames_only_backward, "Jitter repeated frames backward pass");
 }
 
