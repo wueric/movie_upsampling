@@ -143,6 +143,17 @@ class JitterOnlyFrame(torch.autograd.Function):
         return grad_image, grad_coordinates
 
 
+class RepeatFrame(torch.autograd.Function):
+
+    @staticmethod
+    def forward(ctx, input_frames: torch.Tensor, n_repeats: int) -> torch.Tensor:
+        return jitter_cuda.frame_repeat_forward(input_frames, n_repeats)
+
+    @staticmethod
+    def backward(ctx, d_loss_d_output: torch.Tensor):
+        return jitter_cuda.frame_repeat_backward(d_loss_d_output), None
+
+
 class TimeUpsampleFlat(torch.autograd.Function):
     '''
     Wrapper for autograd function that performs forwards and backwards passes

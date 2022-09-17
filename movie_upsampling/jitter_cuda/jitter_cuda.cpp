@@ -54,6 +54,7 @@ torch::Tensor jitter_frames_only_forward(torch::Tensor repeated_frames,
     CHECK_INPUT(repeated_frames);
     CHECK_INPUT(jitter_coords);
 
+    const at::cuda::OptionalCUDAGuard device_guard(device_of(repeated_frames));
     return _jitter_frames_only_forward(repeated_frames, jitter_coords);
 }
 
@@ -68,7 +69,35 @@ torch::Tensor jitter_frames_only_backward(torch::Tensor d_output_d_jittered_fram
     CHECK_INPUT(d_output_d_jittered_frames);
     CHECK_INPUT(jitter_coords);
 
+    const at::cuda::OptionalCUDAGuard device_guard(device_of(d_output_d_jittered_frames));
     return _jitter_frames_only_backward(d_output_d_jittered_frames, jitter_coords);
+}
+
+
+torch::Tensor _frame_repeat_forward(torch::Tensor frames,
+                                    int64_t n_repeats);
+
+
+torch::Tensor frame_repeat_forward(torch::Tensor frames,
+                                   int64_t n_repeats) {
+
+    CHECK_INPUT(frames);
+
+    const at::cuda::OptionalCUDAGuard device_guard(device_of(frames));
+    return _frame_repeat_forward(frames, n_repeats);
+}
+
+
+torch::Tensor _frame_repeat_backward(torch::Tensor d_output_d_repeat_frames);
+
+
+
+torch::Tensor frame_repeat_backward(torch::Tensor d_output_d_repeat_frames) {
+
+    CHECK_INPUT(d_output_d_repeat_frames);
+
+    const at::cuda::OptionalCUDAGuard device_guard(device_of(d_output_d_repeat_frames));
+    return _frame_repeat_backward(d_output_d_repeat_frames);
 }
 
 
@@ -79,5 +108,7 @@ m.def("jitter_movie_forward", &jitter_movie_forward, "Jitter movie forward pass"
 m.def("jitter_movie_backward", &jitter_movie_backward, "Jitter movie backward pass");
 m.def("jitter_frames_only_forward", &jitter_frames_only_forward, "Jitter repeated frames forward pass");
 m.def("jitter_frames_only_backward", &jitter_frames_only_backward, "Jitter repeated frames backward pass");
+m.def("frame_repeat_forward", &frame_repeat_forward, "Repeat frames forward pass");
+m.def("frame_repeat_backward", &frame_repeat_backward, "Repeat frames backward pass");
 }
 
