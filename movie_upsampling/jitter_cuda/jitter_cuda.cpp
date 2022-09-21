@@ -44,6 +44,27 @@ torch::Tensor jitter_movie_backward(torch::Tensor d_output_d_jittered_frames,
 }
 
 
+torch::Tensor _beam_jitter_repeat_frames_forward(torch::Tensor movie_frames,
+                                                 torch::Tensor beam_jitter_coords);
+
+
+torch::Tensor beam_jitter_repeat_frames_forward(torch::Tensor movie_frames,
+                                                torch::Tensor beam_jitter_coords) {
+    /*
+     * Not meant to be differentiable, so we don't care if inputs are non-contiguous
+     *
+     * @param frames: shape (beam, height, width)
+     * @param beam_jitter_coords: shape (beam, beam_grid, n_jitter_frames, 2), int64_t
+     */
+
+    CHECK_CUDA(movie_frames);
+    CHECK_CUDA(beam_jitter_coords);
+
+    const at::cuda::OptionalCUDAGuard device_guard(device_of(movie_frames));
+    return _beam_jitter_repeat_frames_forward(movie_frames, beam_jitter_coords);
+}
+
+
 torch::Tensor _jitter_frames_only_forward(torch::Tensor repeated_frames,
                                           torch::Tensor jitter_coords);
 
@@ -64,7 +85,7 @@ torch::Tensor _jitter_frames_only_backward(torch::Tensor d_output_d_jittered_fra
 
 
 torch::Tensor jitter_frames_only_backward(torch::Tensor d_output_d_jittered_frames,
-                                           torch::Tensor jitter_coords) {
+                                          torch::Tensor jitter_coords) {
 
     CHECK_INPUT(d_output_d_jittered_frames);
     CHECK_INPUT(jitter_coords);
@@ -91,7 +112,6 @@ torch::Tensor frame_repeat_forward(torch::Tensor frames,
 torch::Tensor _frame_repeat_backward(torch::Tensor d_output_d_repeat_frames);
 
 
-
 torch::Tensor frame_repeat_backward(torch::Tensor d_output_d_repeat_frames) {
 
     CHECK_INPUT(d_output_d_repeat_frames);
@@ -99,7 +119,6 @@ torch::Tensor frame_repeat_backward(torch::Tensor d_output_d_repeat_frames) {
     const at::cuda::OptionalCUDAGuard device_guard(device_of(d_output_d_repeat_frames));
     return _frame_repeat_backward(d_output_d_repeat_frames);
 }
-
 
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m
@@ -110,5 +129,6 @@ m.def("jitter_frames_only_forward", &jitter_frames_only_forward, "Jitter repeate
 m.def("jitter_frames_only_backward", &jitter_frames_only_backward, "Jitter repeated frames backward pass");
 m.def("frame_repeat_forward", &frame_repeat_forward, "Repeat frames forward pass");
 m.def("frame_repeat_backward", &frame_repeat_backward, "Repeat frames backward pass");
+m.def("beam_jitter_repeat_frames_forward", &beam_jitter_repeat_frames_forward, "Beam search jitter repeat forward pass");
 }
 

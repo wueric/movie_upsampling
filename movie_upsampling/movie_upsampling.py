@@ -75,9 +75,33 @@ def flat_sparse_upsample_transpose_cuda(movie_frames: torch.Tensor,
     return torch_sparse_upsample_cuda.flat_sparse_upsample_transpose_cuda(movie_frames, frame_selection, frame_weights)
 
 
-def weasel_add(a: torch.Tensor,
-               b: torch.Tensor) -> torch.Tensor:
-    return torch_sparse_upsample_cuda.test_dumb_add_cuda(a, b)
+class BeamJitterFrame(torch.autograd.Function):
+    '''
+    Not meant to be differentiable, backward() returns all None
+    Wrapper for autograd function that performs forward
+        passes for jittering frames for beam search
+    '''
+
+    @staticmethod
+    def forward(ctx,
+                input_frames: torch.Tensor,
+                beam_coordinates: torch.Tensor) -> torch.Tensor:
+        '''
+
+        :param ctx:
+        :param input_frames: shape (beam, height, widht)
+        :param beam_coordinates: shape (beam, beam_grid, n_jitter_frames, 2)
+        :return:
+        '''
+
+        return jitter_cuda.beam_jitter_repeat_frames_forward(
+            input_frames,
+            beam_coordinates
+        )
+
+    @staticmethod
+    def backward(ctx, deriv: torch.Tensor):
+        return None, None
 
 
 class JitterFrame(torch.autograd.Function):
@@ -210,6 +234,24 @@ class TimeUpsampleFlat(torch.autograd.Function):
                                                                backward_weights)
 
         return grad_noupsample, grad_sel, grad_weights, grad_bsel, grad_bweights
+
+
+class ForwardOnlyTimeUpsampleTransposeFlat(torch.autograd.Function):
+
+    @staticmethod
+    def forward(ctx,
+                batch_input_frames: torch.Tensor,
+                batch_selection_ix: torch.Tensor,
+                batch_sel_weights: torch.Tensor):
+
+        return diff_upsample.upsample_transpose_flat_forward(batch_input_frames,
+                                                             batch_selection_ix,
+                                                             batch_sel_weights)
+
+    @staticmethod
+    def backward(ctx, d_loss_d_upsample: torch.Tensor):
+        # designed to be not differentiable
+        return None, None, None
 
 
 class TimeUpsampleTransposeFlat(torch.autograd.Function):
