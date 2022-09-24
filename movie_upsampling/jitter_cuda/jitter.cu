@@ -430,7 +430,7 @@ __global__ void _kern_beam_jitter_repeat_frames_forward(
             bool valid_source_w = (source_w >= 0) && (source_w < width);
 
             jitter_dest[beam_idx][beam_grid_idx][frame_idx][h][w] = (valid_source_h && valid_source_w) ?
-                    frames[b][source_h][source_w] : ZERO; : ZERO; : ZERO; : ZERO;
+                    frames[beam_idx][source_h][source_w] : ZERO;
 
         }
     }
@@ -468,7 +468,7 @@ torch::Tensor _beam_jitter_repeat_frames_forward(
     AT_DISPATCH_FLOATING_TYPES_AND_HALF(dest.scalar_type(), "_kern_beam_jitter_repeat_frames_forward", [&] {
         _kern_beam_jitter_repeat_frames_forward<scalar_t><<<blocks, threads>>>(
                 frames.packed_accessor<scalar_t, 3, torch::RestrictPtrTraits, size_t>(),
-                jitter_coords.packed_accessor<int64_t, 4, torch::RestrictPtrTraits, size_t>(),
+                beam_jitter_coords.packed_accessor<int64_t, 4, torch::RestrictPtrTraits, size_t>(),
                 dest.packed_accessor<scalar_t, 5, torch::RestrictPtrTraits, size_t>());
     });
 
