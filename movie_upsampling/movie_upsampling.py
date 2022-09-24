@@ -135,6 +135,36 @@ class JitterFrame(torch.autograd.Function):
         return grad_image, grad_coordinates
 
 
+class EMJitterFrame(torch.autograd.Function):
+
+    @staticmethod
+    def forward(ctx,
+                batched_input_frames: torch.Tensor,
+                batched_grid_coordinates: torch.Tensor) -> torch.Tensor:
+        '''
+
+        :param ctx:
+        :param batched_input_frames: shape (batch, height, width)
+        :param batched_grid_coordinates: shape (batch, n_grid, n_jittered_frames, 2)
+        :return: shape (batch, n_grid, n_jittered_frames, height, width)
+        '''
+
+        ctx.save_for_backward(batched_grid_coordinates)
+        return jitter_cuda.grid_jitter_single_frame_forward(batched_input_frames,
+                                                            batched_grid_coordinates)
+
+    @staticmethod
+    def backward(ctx, d_output_d_jittered_frame: torch.Tensor) -> Tuple[Optional[torch.Tensor], ...]:
+
+        jitter_coords, = ctx.saved_tensors
+        backward_frame = jitter_cuda.grid_jitter_single_frame_backward(
+            d_output_d_jittered_frame,
+            jitter_coords
+        )
+
+        return backward_frame, None
+
+
 class JitterOnlyFrame(torch.autograd.Function):
     '''
     Wrapper for autograd function that performs forward and backward
