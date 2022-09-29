@@ -197,6 +197,164 @@ torch::Tensor _upsample_flat_backward(torch::Tensor dloss_dflat_upsample,
     return dest;
 }
 
+
+template<typename scalar_t>
+__global__ void _cu_shared_clock_time_upsample_transpose_forward(
+        const torch::PackedTensorAccessor64<scalar_t, 3, torch::RestrictPtrTraits> flat_noupsample,
+        const torch::PackedTensorAccessor64<int64_t, 2, torch::RestrictPtrTraits> flat_selection,
+        const torch::PackedTensorAccessor64<scalar_t, 2, torch::RestrictPtrTraits> flat_weights,
+        const torch::PackedTensorAccessor64<scalar_t, 3, torch::RestrictPtrTraits> flat_upsample) {
+
+    const int64_t nframes_upsample = flat_selection.size(0);
+    const int64_t f_index = threadIdx.y + blockIdx.y * blockDim.y;
+    const int64_t f_stride = blockDim.y * gridDim.y;
+
+    const int64_t n_pix = flat_noupsample.size(2);
+    int64_t p_index = threadIdx.x + blockIdx.x * blockDim.x;
+    int64_t p_stride = blockDim.x * gridDim.x;
+
+    int64_t b = threadIdx.z + blockIdx.z * blockDim.z;
+
+    const scalar_t ZERO = 0.0;
+
+    for (int64_t f = f_index; f < nframes_upsample; f += f_stride) {
+
+        int64_t first_frame_ix = flat_selection[f][FIRST_OVERLAP];
+        int64_t second_frame_ix = flat_selection[f][SECOND_OVERLAP];
+
+        scalar_t first_frame_w = flat_weights[f][FIRST_OVERLAP];
+        scalar_t second_frame_w = (second_frame_ix != INVALID_IDX) ? flat_weights[f][SECOND_OVERLAP] : ZERO;
+
+        for (int64_t p = p_index; p < n_pix; p += p_stride) {
+
+            scalar_t first_val = flat_noupsample[b][first_frame_ix][p];
+            scalar_t second_val = flat_noupsample[b][second_frame_ix][p];
+
+            scalar_t write_val = first_val * first_frame_w + second_val * second_frame_w;
+            flat_upsample[b][p][f] = write_val;
+        }
+    }
+}
+
+
+torch::Tensor _shared_clock_time_upsample_transpose_forward(torch::Tensor flat_noupsample,
+                                                            torch::Tensor flat_selection,
+                                                            torch::Tensor flat_weights) {
+    /*
+     * This function performs a forward pass time-upsample transpose for jittered movie reconstruction
+     * where the timing is shared among every entry in the batch (i.e. if we have a grid of images
+     * for the same trial).
+     *
+     * Note that this function also transposes the time dimension to the last axis so that conv1d
+     * can be applied directly with no further axis manipulations
+     *
+     * @param flat_noupsample: shape (grid, n_frames_noupsample, grid)
+     * @param flat_selection: shape (n_frames_upsample, 2), int64_t
+     * @param flat_weights: shape (n_frames_upsample, 2)
+     *
+     * returns: shape (grid, n_pix, n_frames_upsample)
+     */
+
+    const int64_t n_grid = flat_noupsample.size(0);
+    const int64_t nframes_noupsample = flat_noupsample.size(1);
+    const int64_t n_pix = flat_noupsample.size(2);
+
+    const int64_t nframes_upsample = flat_selection.size(0);
+
+    auto options = torch::TensorOptions()
+            .dtype(flat_noupsample.dtype())
+            .layout(torch::kStrided)
+            .device(flat_noupsample.device());
+    torch::Tensor dest = torch::zeros(std::vector<int64_t>({n_grid, n_pix, nframes_upsample}), options);
+
+    const int64_t threads_per_time = 16;
+
+    // order is pixel, time, batch
+    const dim3 threads(32, threads_per_time, 1);
+    const dim3 blocks(1, (nframes_upsample + threads_per_time - 1) / threads_per_time, n_grid);
+
+    AT_DISPATCH_FLOATING_TYPES_AND_HALF(dest.scalar_type(), "_cu_shared_clock_time_upsample_transpose_forward", [&] {
+        _cu_shared_clock_time_upsample_transpose_forward<scalar_t><<<blocks, threads>>>(
+                flat_noupsample.packed_accessor64<scalar_t, 3, torch::RestrictPtrTraits>(),
+                flat_selection.packed_accessor64<int64_t, 2, torch::RestrictPtrTraits>(),
+                flat_weights.packed_accessor64<scalar_t, 2, torch::RestrictPtrTraits>(),
+                dest.packed_accessor64<scalar_t, 3, torch::RestrictPtrTraits>());
+    });
+
+    return dest;
+}
+
+
+template<typename scalar_t>
+__global__ void _cu_shared_clock_time_upsample_transpose_backward(
+        const torch::PackedTensorAccessor64<scalar_t, 3, torch::RestrictPtrTraits> dloss_dupsample,
+        const torch::PackedTensorAccessor64<int64_t, 2, torch::RestrictPtrTraits> backward_selection,
+        const torch::PackedTensorAccessor64<scalar_t, 2, torch::RestrictPtrTraits> backward_weights,
+        torch::PackedTensorAccessor64<scalar_t, 3, torch::RestrictPtrTraits> dloss_dnoupsample) {
+
+    int64_t b = threadIdx.z + blockIdx.z * blockDim.z;
+
+    const int64_t n_frames_noupsample = backward_selection.size(0);
+    int64_t f_index = threadIdx.y + blockIdx.y * blockDim.y;
+    int64_t f_stride = blockDim.y * gridDim.y;
+
+    const int64_t n_pix = dloss_dupsample.size(1);
+    int64_t p_index = threadIdx.x + blockIdx.x * blockDim.x;
+    int64_t p_stride = blockDim.x * gridDim.x;
+
+    const int64_t max_overlap_frames = backward_selection.size(1);
+    for (int64_t f = f_index; f < n_frames_noupsample; f += f_stride) {
+        for (int64_t p = p_index; p < n_pix; p += p_stride) {
+            for (int64_t ix = 0; ix < max_overlap_frames; ++ix) {
+                int64_t read_from_ix = backward_selection[f][ix];
+                if (read_from_ix != INVALID_IDX) {
+                    dloss_dnoupsample[b][f][p] += (dloss_dupsample[b][p][read_from_ix] * backward_weights[f][ix]);
+                }
+            }
+        }
+    }
+}
+
+
+torch::Tensor _shared_clock_upsample_transpose_flat_backward(torch::Tensor dloss_dflat_upsample,
+                                                             torch::Tensor backward_selection,
+                                                             torch::Tensor backward_weights) {
+    /*
+     * @param dloss_dflat_upsample: shape (batch, n_pix, n_frames_upsample)
+     * @param backward_selection: shape (n_frames_noupsample, n_max_overlap)
+     * @param backward_weights: shape (n_frames_noupsample, n_max_overlap)
+     *
+     * @returns shape (batch, n_frames_noupsample, n_pix)
+     */
+
+    const int64_t batch = dloss_dflat_upsample.size(0);
+    const int64_t nframes_noupsample = backward_selection.size(0);
+    const int64_t n_pix = dloss_dflat_upsample.size(1);
+
+    auto options = torch::TensorOptions()
+            .dtype(dloss_dflat_upsample.dtype())
+            .layout(torch::kStrided)
+            .device(dloss_dflat_upsample.device());
+    torch::Tensor dest = torch::zeros(std::vector<int64_t>({batch, nframes_noupsample, n_pix}), options);
+
+    const int64_t threads_per_time = 8;
+
+    // order is pixel, time, batch
+    const dim3 threads(128, threads_per_time, 1);
+    const dim3 blocks(1, (nframes_noupsample + threads_per_time - 1) / threads_per_time, batch);
+
+    AT_DISPATCH_FLOATING_TYPES_AND_HALF(dest.scalar_type(), "_cu_shared_clock_time_upsample_transpose_backward", [&] {
+        _cu_shared_clock_time_upsample_transpose_backward<scalar_t><<<blocks, threads>>>(
+                dloss_dflat_upsample.packed_accessor<scalar_t, 3, torch::RestrictPtrTraits, size_t>(),
+                backward_selection.packed_accessor<int64_t, 2, torch::RestrictPtrTraits, size_t>(),
+                backward_weights.packed_accessor<scalar_t, 2, torch::RestrictPtrTraits, size_t>(),
+                dest.packed_accessor<scalar_t, 3, torch::RestrictPtrTraits, size_t>());
+    });
+
+    return dest;
+}
+
+
 template<typename scalar_t>
 __global__ void _cu_time_upsample_transpose_forward(
         const torch::PackedTensorAccessor<scalar_t, 3, torch::RestrictPtrTraits, size_t> flat_noupsample,

@@ -155,7 +155,6 @@ class EMJitterFrame(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, d_output_d_jittered_frame: torch.Tensor) -> Tuple[Optional[torch.Tensor], ...]:
-
         jitter_coords, = ctx.saved_tensors
         backward_frame = jitter_cuda.grid_jitter_single_frame_backward(
             d_output_d_jittered_frame,
@@ -273,7 +272,6 @@ class ForwardOnlyTimeUpsampleTransposeFlat(torch.autograd.Function):
                 batch_input_frames: torch.Tensor,
                 batch_selection_ix: torch.Tensor,
                 batch_sel_weights: torch.Tensor):
-
         return diff_upsample.upsample_transpose_flat_forward(batch_input_frames,
                                                              batch_selection_ix,
                                                              batch_sel_weights)
@@ -316,8 +314,7 @@ class TimeUpsampleTransposeFlat(torch.autograd.Function):
         assert backward_sel.shape[:2] == (batch, n_frames_no_upsample)
         assert backward_weights.shape[:2] == (batch, n_frames_no_upsample)
 
-        ctx.save_for_backward(batch_input_frames, batch_selection_ix, batch_sel_weights,
-                              backward_sel, backward_weights)
+        ctx.save_for_backward(backward_sel, backward_weights)
 
         return diff_upsample.upsample_transpose_flat_forward(batch_input_frames,
                                                              batch_selection_ix,
@@ -332,7 +329,7 @@ class TimeUpsampleTransposeFlat(torch.autograd.Function):
         :param d_loss_d_upsample: shape (batch, n_pix, n_frames_upsample)
         :return:
         '''
-        batch_input, batch_sel, batch_weights, backward_sel, backward_weights = ctx.saved_tensors
+        backward_sel, backward_weights = ctx.saved_tensors
         grad_sel, grad_weights, grad_bsel, grad_bweights = None, None, None, None
 
         grad_noupsample = diff_upsample.upsample_transpose_flat_backward(d_loss_d_upsample,
@@ -438,6 +435,7 @@ class TimeUpsampleTransposeMovie(torch.autograd.Function):
         return diff_upsample.upsample_transpose_flat_forward(flat_input_frames,
                                                              batch_selection_ix,
                                                              batch_sel_weights).reshape(batch, height, width, -1)
+
     @staticmethod
     def backward(ctx,
                  d_loss_d_upsample) -> Tuple[Optional[torch.Tensor], ...]:
@@ -460,3 +458,52 @@ class TimeUpsampleTransposeMovie(torch.autograd.Function):
             orig_batch, orig_n_frames_noupsample, orig_height, orig_width)
 
         return grad_noupsample, grad_sel, grad_weights, grad_bsel, grad_bweights
+
+
+class SharedClockTimeUpsampleTransposeFlat(torch.autograd.Function):
+
+    @staticmethod
+    def forward(ctx,
+                batch_input_frames: torch.Tensor,
+                share_selection_ix: torch.Tensor,
+                share_sel_weights: torch.Tensor,
+                share_backward_sel: torch.Tensor,
+                share_backward_weights: torch.Tensor) -> torch.Tensor:
+        '''
+
+        :param ctx:
+        :param batch_input_frames: shape (batch, n_frames_noupsample, n_pix)
+        :param share_selection_ix: shape (n_frames_upsample, 2), int64
+        :param share_sel_weights: shape (n_frames_upsample, 2)
+        :param share_backward_sel: shape (n_frames_noupsample, n_max_overlap), int64
+        :param share_backward_weights: shape (n_frames_noupsample, n_max_overlap)
+        :return: shape (batch, n_pix, n_frames_upsample)
+        '''
+
+        batch, n_frames_no_upsample, n_pix = batch_input_frames.shape
+        n_frames_upsample = share_selection_ix.shape[0]
+
+        assert share_selection_ix.shape == (n_frames_upsample, 2)
+        assert share_sel_weights.shape == (n_frames_upsample, 2)
+        assert share_backward_sel.shape[0] == n_frames_no_upsample
+        assert share_backward_weights.shape[0] == n_frames_upsample
+
+        ctx.save_for_backward(share_backward_sel, share_backward_weights)
+
+        return diff_upsample.shared_clock_time_upsample_transpose_forward(batch_input_frames,
+                                                                          share_selection_ix,
+                                                                          share_sel_weights)
+
+    @staticmethod
+    def backward(ctx,
+                 d_loss_d_upsample) -> Tuple[Optional[torch.Tensor], ...]:
+
+        share_backward_sel, share_backward_weights = ctx.saved_tensors
+        grad_noupsample = diff_upsample.shared_clock_upsample_transpose_flat_backward(
+            d_loss_d_upsample,
+            share_backward_sel,
+            share_backward_weights
+        )
+
+        return grad_noupsample, None, None, None, None
+
