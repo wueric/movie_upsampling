@@ -46,7 +46,7 @@ torch::Tensor _frame_repeat_forward(torch::Tensor frames,
             .dtype(frames.dtype())
             .layout(torch::kStrided)
             .device(frames.device());
-    torch::Tensor dest = torch::empty(std::vector<int64_t>({batch, n_repeats, height, width}), options);
+    torch::Tensor dest = torch::zeros(std::vector<int64_t>({batch, n_repeats, height, width}), options);
 
     const dim3 threads(1, 32, 32);
     const dim3 blocks(batch, 4, 4);
@@ -173,7 +173,7 @@ torch::Tensor _jitter_frames_only_forward(torch::Tensor repeated_frames,
             .dtype(repeated_frames.dtype())
             .layout(torch::kStrided)
             .device(repeated_frames.device());
-    torch::Tensor dest = torch::empty(std::vector<int64_t>({batch, n_jitter_frames, height, width}), options);
+    torch::Tensor dest = torch::zeros(std::vector<int64_t>({batch, n_jitter_frames, height, width}), options);
 
     const dim3 threads(16, 16);
     const dim3 blocks(batch, n_jitter_frames);
@@ -311,7 +311,7 @@ torch::Tensor _jitter_frames_forward(torch::Tensor frames,
             .dtype(frames.dtype())
             .layout(torch::kStrided)
             .device(frames.device());
-    torch::Tensor dest = torch::empty(std::vector<int64_t>({batch, n_jitter_frames, height, width}), options);
+    torch::Tensor dest = torch::zeros(std::vector<int64_t>({batch, n_jitter_frames, height, width}), options);
 
     const dim3 threads(16, 32);
     const dim3 blocks(batch, n_jitter_frames);
@@ -459,7 +459,7 @@ torch::Tensor _beam_jitter_repeat_frames_forward(
             .dtype(frames.dtype())
             .layout(torch::kStrided)
             .device(frames.device());
-    torch::Tensor dest = torch::empty(std::vector<int64_t>({beam, beam_grid, n_jitter_frames, height, width}),
+    torch::Tensor dest = torch::zeros(std::vector<int64_t>({beam, beam_grid, n_jitter_frames, height, width}),
                                       options);
 
     const dim3 threads(16, 32);
@@ -534,7 +534,7 @@ torch::Tensor _grid_jitter_single_frame_forward(
             .dtype(single_frame.dtype())
             .layout(torch::kStrided)
             .device(single_frame.device());
-    torch::Tensor dest = torch::empty(std::vector<int64_t>({batch, n_grid, n_jitter_frames, height, width}),
+    torch::Tensor dest = torch::zeros(std::vector<int64_t>({batch, n_grid, n_jitter_frames, height, width}),
                                       options);
 
     const dim3 threads(16, 32);
