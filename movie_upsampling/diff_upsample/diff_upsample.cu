@@ -265,7 +265,7 @@ torch::Tensor _upsample_transpose_flat_forward(torch::Tensor flat_noupsample,
             .dtype(flat_noupsample.dtype())
             .layout(torch::kStrided)
             .device(flat_noupsample.device());
-    torch::Tensor dest = torch::empty(std::vector<int64_t>({batch, n_pix, nframes_upsample}), options);
+    torch::Tensor dest = torch::zeros(std::vector<int64_t>({batch, n_pix, nframes_upsample}), options);
 
     const int64_t threads_per_time = 16;
 
