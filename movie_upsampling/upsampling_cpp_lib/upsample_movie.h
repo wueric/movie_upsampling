@@ -62,7 +62,9 @@ int64_t _raw_compute_interval_overlaps(CNDArrayWrapper::StaticNDArrayWrapper<T, 
             output_overlaps.storeTo(frame_high, us_idx, 0);
             frame_weights.storeTo(1.0, us_idx, 0);
 
-            output_overlaps.storeTo(INVALID_FRAME, us_idx, 1);
+            output_overlaps.storeTo(frame_high, us_idx, 1); // this value should never be used
+            // simply a placeholder that corresponds to a valid memory address
+            // so that we can avoid branching in the CUDA code
             frame_weights.storeTo(0.0, us_idx, 1);
 
             frame_idx = frame_high;

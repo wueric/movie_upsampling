@@ -486,7 +486,7 @@ class SharedClockTimeUpsampleTransposeFlat(torch.autograd.Function):
         assert share_selection_ix.shape == (n_frames_upsample, 2)
         assert share_sel_weights.shape == (n_frames_upsample, 2)
         assert share_backward_sel.shape[0] == n_frames_no_upsample
-        assert share_backward_weights.shape[0] == n_frames_upsample
+        assert share_backward_weights.shape[0] == n_frames_no_upsample
 
         ctx.save_for_backward(share_backward_sel, share_backward_weights)
 

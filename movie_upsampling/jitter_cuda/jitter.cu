@@ -550,7 +550,6 @@ torch::Tensor _grid_jitter_single_frame_forward(
     return dest;
 }
 
-
 template<typename scalar_t>
 __global__ void _kern_grid_jitter_single_frame_backward(
         const torch::PackedTensorAccessor<scalar_t, 5, torch::RestrictPtrTraits, size_t> d_output_d_jittered_frames,

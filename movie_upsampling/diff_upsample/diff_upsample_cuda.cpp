@@ -108,7 +108,7 @@ torch::Tensor shared_clock_upsample_transpose_flat_backward(torch::Tensor dloss_
     CHECK_INPUT(backward_weights);
 
     const at::cuda::OptionalCUDAGuard device_guard(device_of(dloss_dflat_upsample));
-    return shared_clock_upsample_transpose_flat_backward(dloss_dflat_upsample, backward_selection, backward_weights);
+    return _shared_clock_upsample_transpose_flat_backward(dloss_dflat_upsample, backward_selection, backward_weights);
 }
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m

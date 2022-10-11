@@ -203,7 +203,7 @@ __global__ void _cu_shared_clock_time_upsample_transpose_forward(
         const torch::PackedTensorAccessor64<scalar_t, 3, torch::RestrictPtrTraits> flat_noupsample,
         const torch::PackedTensorAccessor64<int64_t, 2, torch::RestrictPtrTraits> flat_selection,
         const torch::PackedTensorAccessor64<scalar_t, 2, torch::RestrictPtrTraits> flat_weights,
-        const torch::PackedTensorAccessor64<scalar_t, 3, torch::RestrictPtrTraits> flat_upsample) {
+        torch::PackedTensorAccessor64<scalar_t, 3, torch::RestrictPtrTraits> flat_upsample) {
 
     const int64_t nframes_upsample = flat_selection.size(0);
     const int64_t f_index = threadIdx.y + blockIdx.y * blockDim.y;
@@ -215,15 +215,14 @@ __global__ void _cu_shared_clock_time_upsample_transpose_forward(
 
     int64_t b = threadIdx.z + blockIdx.z * blockDim.z;
 
-    const scalar_t ZERO = 0.0;
-
     for (int64_t f = f_index; f < nframes_upsample; f += f_stride) {
 
         int64_t first_frame_ix = flat_selection[f][FIRST_OVERLAP];
         int64_t second_frame_ix = flat_selection[f][SECOND_OVERLAP];
 
         scalar_t first_frame_w = flat_weights[f][FIRST_OVERLAP];
-        scalar_t second_frame_w = (second_frame_ix != INVALID_IDX) ? flat_weights[f][SECOND_OVERLAP] : ZERO;
+        scalar_t second_frame_w = flat_weights[f][SECOND_OVERLAP];
+
 
         for (int64_t p = p_index; p < n_pix; p += p_stride) {
 
@@ -305,12 +304,16 @@ __global__ void _cu_shared_clock_time_upsample_transpose_backward(
     const int64_t max_overlap_frames = backward_selection.size(1);
     for (int64_t f = f_index; f < n_frames_noupsample; f += f_stride) {
         for (int64_t p = p_index; p < n_pix; p += p_stride) {
+
+            scalar_t acc = 0.0;
             for (int64_t ix = 0; ix < max_overlap_frames; ++ix) {
                 int64_t read_from_ix = backward_selection[f][ix];
-                if (read_from_ix != INVALID_IDX) {
-                    dloss_dnoupsample[b][f][p] += (dloss_dupsample[b][p][read_from_ix] * backward_weights[f][ix]);
-                }
+                if (read_from_ix == INVALID_IDX) break;
+
+                acc += (dloss_dupsample[b][p][read_from_ix] * backward_weights[f][ix]);
             }
+
+            dloss_dnoupsample[b][f][p] = acc;
         }
     }
 }
@@ -337,7 +340,7 @@ torch::Tensor _shared_clock_upsample_transpose_flat_backward(torch::Tensor dloss
             .device(dloss_dflat_upsample.device());
     torch::Tensor dest = torch::zeros(std::vector<int64_t>({batch, nframes_noupsample, n_pix}), options);
 
-    const int64_t threads_per_time = 8;
+    const int64_t threads_per_time = 4;
 
     // order is pixel, time, batch
     const dim3 threads(128, threads_per_time, 1);
@@ -345,10 +348,10 @@ torch::Tensor _shared_clock_upsample_transpose_flat_backward(torch::Tensor dloss
 
     AT_DISPATCH_FLOATING_TYPES_AND_HALF(dest.scalar_type(), "_cu_shared_clock_time_upsample_transpose_backward", [&] {
         _cu_shared_clock_time_upsample_transpose_backward<scalar_t><<<blocks, threads>>>(
-                dloss_dflat_upsample.packed_accessor<scalar_t, 3, torch::RestrictPtrTraits, size_t>(),
-                backward_selection.packed_accessor<int64_t, 2, torch::RestrictPtrTraits, size_t>(),
-                backward_weights.packed_accessor<scalar_t, 2, torch::RestrictPtrTraits, size_t>(),
-                dest.packed_accessor<scalar_t, 3, torch::RestrictPtrTraits, size_t>());
+                dloss_dflat_upsample.packed_accessor64<scalar_t, 3, torch::RestrictPtrTraits>(),
+                backward_selection.packed_accessor64<int64_t, 2, torch::RestrictPtrTraits>(),
+                backward_weights.packed_accessor64<scalar_t, 2, torch::RestrictPtrTraits>(),
+                dest.packed_accessor64<scalar_t, 3, torch::RestrictPtrTraits>());
     });
 
     return dest;
@@ -372,15 +375,13 @@ __global__ void _cu_time_upsample_transpose_forward(
 
     int64_t b = threadIdx.z + blockIdx.z * blockDim.z;
 
-    const scalar_t ZERO = 0.0;
-
     for (int64_t f = f_index; f < nframes_upsample; f += f_stride) {
 
         int64_t first_frame_ix = flat_selection[b][f][FIRST_OVERLAP];
         int64_t second_frame_ix = flat_selection[b][f][SECOND_OVERLAP];
 
         scalar_t first_frame_w = flat_weights[b][f][FIRST_OVERLAP];
-        scalar_t second_frame_w = (second_frame_ix != INVALID_IDX) ? flat_weights[b][f][SECOND_OVERLAP] : ZERO;
+        scalar_t second_frame_w = flat_weights[b][f][SECOND_OVERLAP];
 
         for (int64_t p = p_index; p < n_pix; p += p_stride) {
 
@@ -462,12 +463,16 @@ __global__ void _cu_time_upsample_transpose_backward(
     const int64_t max_overlap_frames = backward_selection.size(2);
     for (int64_t f = f_index; f < n_frames_noupsample; f += f_stride) {
         for (int64_t p = p_index; p < n_pix; p += p_stride) {
+
+            scalar_t acc = 0.0;
             for (int64_t ix = 0; ix < max_overlap_frames; ++ix) {
+
                 int64_t read_from_ix = backward_selection[b][f][ix];
-                if (read_from_ix != INVALID_IDX) {
-                    dloss_dnoupsample[b][f][p] += (dloss_dupsample[b][p][read_from_ix] * backward_weights[b][f][ix]);
-                }
+                if (read_from_ix == INVALID_IDX) break;
+
+                acc += (dloss_dupsample[b][p][read_from_ix] * backward_weights[b][f][ix]);
             }
+            dloss_dnoupsample[b][f][p] = acc;
         }
     }
 }

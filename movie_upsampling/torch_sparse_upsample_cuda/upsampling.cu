@@ -53,36 +53,34 @@ __global__ void sparse_time_domain_movie_upsample_kernel(
         const torch::PackedTensorAccessor<int64_t, 2, torch::RestrictPtrTraits, size_t> frame_selection,
         const torch::PackedTensorAccessor<scalar_t, 2, torch::RestrictPtrTraits, size_t> frame_weights) {
 
-    int64_t index = blockIdx.x * blockDim.x + threadIdx.x;
-    int64_t stride = blockDim.x * gridDim.x;
+    int64_t h_index = blockIdx.y * blockDim.y + threadIdx.y;
+    int64_t h_stride = blockDim.y * gridDim.y;
 
-    const int64_t max_N = us_dest.size(0);
-    const int64_t height = us_dest.size(1);
-    const int64_t width = us_dest.size(2);
+    int64_t w_index = blockIdx.z * blockDim.z + threadIdx.z;
+    int64_t w_stride = blockDim.z * gridDim.z;
 
-    for (int64_t i = index; i < max_N; i += stride) {
-        if (frame_selection[i][1] == INVALID_IDX) {
-            int64_t only_frame_ix = frame_selection[i][0];
-            for (int64_t h = 0; h < height; ++h) {
-                for (int64_t w = 0; w < width; ++w) {
-                    us_dest[i][h][w] = movie_frames[only_frame_ix][h][w];
-                }
-            }
-        } else {
+    int64_t time_index = blockIdx.x * blockDim.x + threadIdx.x;
+    int64_t time_stride = blockDim.x * gridDim.x;
 
-            int64_t first_frame_ix = frame_selection[i][0];
-            scalar_t first_weight = frame_weights[i][0];
+    const int64_t height = us_dest.size(0);
+    const int64_t width = us_dest.size(1);
+    const int64_t max_N = us_dest.size(2);
 
-            int64_t second_frame_ix = frame_selection[i][1];;
-            scalar_t second_weight = frame_weights[i][1];
-            for (int64_t h = 0; h < height; ++h) {
-                for (int64_t w = 0; w < width; ++w) {
-                    scalar_t first_val = movie_frames[first_frame_ix][h][w];
-                    scalar_t second_val = movie_frames[second_frame_ix][h][w];
 
-                    scalar_t write_val = first_val * first_weight + second_val * second_weight;
-                    us_dest[i][h][w] = write_val;
-                }
+    for (int64_t t = time_index; t < max_N; t += time_stride) {
+        int64_t first_frame_ix = frame_selection[t][0];
+        scalar_t first_weight = frame_weights[t][0];
+
+        int64_t second_frame_ix = frame_selection[t][1];
+        scalar_t second_weight = frame_weights[t][1];
+
+        for (int64_t h = h_index; h < height; h += h_stride) {
+            for (int64_t w = w_index; w < width; w += w_stride) {
+                scalar_t first_val = movie_frames[first_frame_ix][h][w];
+                scalar_t second_val = movie_frames[second_frame_ix][h][w];
+
+                scalar_t write_val = first_val * first_weight + second_val * second_weight;
+                us_dest[t][h][w] = write_val;
             }
         }
     }
@@ -101,10 +99,11 @@ torch::Tensor upsample_sparse_movie_cuda(torch::Tensor movie_frames,
             .layout(torch::kStrided)
             .device(movie_frames.device());
 
-    torch::Tensor dest = torch::empty(std::vector<int64_t>({n_bins, height, width}), options);
+    torch::Tensor dest = torch::zeros(std::vector<int64_t>({n_bins, height, width}), options);
 
-    const int threads = 1024;
-    const dim3 blocks((n_bins + threads - 1) / threads);
+    const int n_bin_grid = 8;
+    const dim3 threads(n_bin_grid, 8, 8);
+    const dim3 blocks((n_bin_grid + n_bins - 1) / n_bin_grid, 4, 4);
 
     AT_DISPATCH_FLOATING_TYPES_AND_HALF(dest.scalar_type(), "sparse_upsample_movie", [&] {
         sparse_time_domain_movie_upsample_kernel<scalar_t><<<blocks, threads>>>(
@@ -125,36 +124,34 @@ __global__ void sparse_time_domain_upsample_T_kernel(
         const torch::PackedTensorAccessor<int64_t, 2, torch::RestrictPtrTraits, size_t> frame_selection,
         const torch::PackedTensorAccessor<scalar_t, 2, torch::RestrictPtrTraits, size_t> frame_weights) {
 
-    int64_t index = blockIdx.x * blockDim.x + threadIdx.x;
-    int64_t stride = blockDim.x * gridDim.x;
+    int64_t h_index = blockIdx.y * blockDim.y + threadIdx.y;
+    int64_t h_stride = blockDim.y * gridDim.y;
+
+    int64_t w_index = blockIdx.z * blockDim.z + threadIdx.z;
+    int64_t w_stride = blockDim.z * gridDim.z;
+
+    int64_t time_index = blockIdx.x * blockDim.x + threadIdx.x;
+    int64_t time_stride = blockDim.x * gridDim.x;
 
     const int64_t height = us_dest.size(0);
     const int64_t width = us_dest.size(1);
     const int64_t max_N = us_dest.size(2);
 
-    for (int64_t i = index; i < max_N; i += stride) {
-        if (frame_selection[i][1] == INVALID_IDX) {
-            int64_t only_frame_ix = frame_selection[i][0];
-            for (int64_t h = 0; h < height; ++h) {
-                for (int64_t w = 0; w < width; ++w) {
-                    us_dest[h][w][i] = movie_frames[only_frame_ix][h][w];
-                }
-            }
-        } else {
 
-            int64_t first_frame_ix = frame_selection[i][0];
-            scalar_t first_weight = frame_weights[i][0];
+    for (int64_t t = time_index; t < max_N; t += time_stride) {
+        int64_t first_frame_ix = frame_selection[t][0];
+        scalar_t first_weight = frame_weights[t][0];
 
-            int64_t second_frame_ix = frame_selection[i][1];;
-            scalar_t second_weight = frame_weights[i][1];
-            for (int64_t h = 0; h < height; ++h) {
-                for (int64_t w = 0; w < width; ++w) {
-                    scalar_t first_val = movie_frames[first_frame_ix][h][w];
-                    scalar_t second_val = movie_frames[second_frame_ix][h][w];
+        int64_t second_frame_ix = frame_selection[t][1];
+        scalar_t second_weight = frame_weights[t][1];
 
-                    scalar_t write_val = first_val * first_weight + second_val * second_weight;
-                    us_dest[h][w][i] = write_val;
-                }
+        for (int64_t h = h_index; h < height; h += h_stride) {
+            for (int64_t w = w_index; w < width; w += w_stride) {
+                scalar_t first_val = movie_frames[first_frame_ix][h][w];
+                scalar_t second_val = movie_frames[second_frame_ix][h][w];
+
+                scalar_t write_val = first_val * first_weight + second_val * second_weight;
+                us_dest[h][w][t] = write_val;
             }
         }
     }
@@ -174,10 +171,11 @@ torch::Tensor upsample_transpose_sparse_movie_cuda(torch::Tensor movie_frames,
             .layout(torch::kStrided)
             .device(movie_frames.device());
 
-    torch::Tensor dest = torch::empty(std::vector<int64_t>({height, width, n_bins}), options);
+    torch::Tensor dest = torch::zeros(std::vector<int64_t>({height, width, n_bins}), options);
 
-    const int threads = 1024;
-    const dim3 blocks((n_bins + threads - 1) / threads);
+    const int n_bin_grid = 8;
+    const dim3 threads(n_bin_grid, 8, 8);
+    const dim3 blocks((n_bin_grid + n_bins - 1) / n_bin_grid, 4, 4);
 
     AT_DISPATCH_FLOATING_TYPES_AND_HALF(dest.scalar_type(), "sparse_upsample_transpose_movie", [&] {
         sparse_time_domain_upsample_T_kernel<scalar_t><<<blocks, threads>>>(
@@ -198,32 +196,28 @@ __global__ void sparse_time_domain_upsample_flat_kernel(
         const torch::PackedTensorAccessor<int64_t, 2, torch::RestrictPtrTraits, size_t> frame_selection,
         const torch::PackedTensorAccessor<scalar_t, 2, torch::RestrictPtrTraits, size_t> frame_weights) {
 
-    int64_t index = blockIdx.x * blockDim.x + threadIdx.x;
-    int64_t stride = blockDim.x * gridDim.x;
-
     const int64_t max_N = us_dest.size(0);
     const int64_t n_pix = us_dest.size(1);
 
-    for (int64_t i = index; i < max_N; i += stride) {
-        if (frame_selection[i][1] == INVALID_IDX) {
-            int64_t only_frame_ix = frame_selection[i][0];
-            for (int64_t p = 0; p < n_pix; ++p) {
-                us_dest[i][p] = flat_frames[only_frame_ix][p];
-            }
-        } else {
-            int64_t first_frame_ix = frame_selection[i][0];
-            scalar_t first_weight = frame_weights[i][0];
+    int64_t t_index = blockIdx.x * blockDim.x + threadIdx.x;
+    int64_t t_stride = blockDim.x * gridDim.x;
 
-            int64_t second_frame_ix = frame_selection[i][1];;
-            scalar_t second_weight = frame_weights[i][1];
+    int64_t p_index = blockIdx.y * blockDim.y + threadIdx.y;
+    int64_t p_stride = blockDim.y * gridDim.y;
 
-            for (int64_t p = 0; p < n_pix; ++p) {
-                scalar_t first_val = flat_frames[first_frame_ix][p];
-                scalar_t second_val = flat_frames[second_frame_ix][p];
+    for (int64_t t = t_index; t < max_N; t += t_stride) {
+        int64_t first_frame_ix = frame_selection[t][0];
+        scalar_t first_weight = frame_weights[t][0];
 
-                scalar_t write_val = first_val * first_weight + second_val * second_weight;
-                us_dest[i][p] = write_val;
-            }
+        int64_t second_frame_ix = frame_selection[t][1];
+        scalar_t second_weight = frame_weights[t][1];
+        for (int64_t p = p_index; p < n_pix; p += p_stride) {
+
+            scalar_t first_val = flat_frames[first_frame_ix][p];
+            scalar_t second_val = flat_frames[second_frame_ix][p];
+
+            scalar_t write_val = first_val * first_weight + second_val * second_weight;
+            us_dest[t][p] = write_val;
         }
     }
 }
@@ -240,10 +234,14 @@ torch::Tensor upsample_flat_cuda(torch::Tensor flat_time_data,
             .layout(torch::kStrided)
             .device(flat_time_data.device());
 
-    torch::Tensor dest = torch::empty(std::vector<int64_t>({n_bins, n_pix}), options);
+    torch::Tensor dest = torch::zeros(std::vector<int64_t>({n_bins, n_pix}), options);
 
-    const int threads = 1024;
-    const dim3 blocks((n_bins + threads - 1) / threads);
+    const int time_threads = 32;
+    const int pix_threads = 16;
+
+    const dim3 threads(time_threads, pix_threads);
+    const dim3 blocks((n_bins + time_threads - 1) / time_threads,
+                      (n_pix + pix_threads - 1) / pix_threads);
 
     AT_DISPATCH_FLOATING_TYPES_AND_HALF(dest.scalar_type(), "sparse_upsample_flat", [&] {
         sparse_time_domain_upsample_flat_kernel<scalar_t><<<blocks, threads>>>(
@@ -264,39 +262,42 @@ __global__ void sparse_time_domain_upsample_flat_T_kernel(
         const torch::PackedTensorAccessor<int64_t, 2, torch::RestrictPtrTraits, size_t> frame_selection,
         const torch::PackedTensorAccessor<scalar_t, 2, torch::RestrictPtrTraits, size_t> frame_weights) {
 
-    int64_t index = blockIdx.x * blockDim.x + threadIdx.x;
-    int64_t stride = blockDim.x * gridDim.x;
-
     const int64_t n_pix = us_dest.size(0);
     const int64_t max_N = us_dest.size(1);
 
-    for (int64_t i = index; i < max_N; i += stride) {
-        if (frame_selection[i][1] == INVALID_IDX) {
-            int64_t only_frame_ix = frame_selection[i][0];
-            for (int64_t p = 0; p < n_pix; ++p) {
-                us_dest[p][i] = flat_frames[only_frame_ix][p];
-            }
-        } else {
-            int64_t first_frame_ix = frame_selection[i][0];
-            scalar_t first_weight = frame_weights[i][0];
+    int64_t t_index = blockIdx.x * blockDim.x + threadIdx.x;
+    int64_t t_stride = blockDim.x * gridDim.x;
 
-            int64_t second_frame_ix = frame_selection[i][1];;
-            scalar_t second_weight = frame_weights[i][1];
+    int64_t p_index = blockIdx.y * blockDim.y + threadIdx.y;
+    int64_t p_stride = blockDim.y * gridDim.y;
 
-            for (int64_t p = 0; p < n_pix; ++p) {
-                scalar_t first_val = flat_frames[first_frame_ix][p];
-                scalar_t second_val = flat_frames[second_frame_ix][p];
+    for (int64_t t = t_index; t < max_N; t += t_stride) {
+        int64_t first_frame_ix = frame_selection[t][0];
+        scalar_t first_weight = frame_weights[t][0];
 
-                scalar_t write_val = first_val * first_weight + second_val * second_weight;
-                us_dest[p][i] = write_val;
-            }
+        int64_t second_frame_ix = frame_selection[t][1];
+        scalar_t second_weight = frame_weights[t][1];
+        for (int64_t p = p_index; p < n_pix; p += p_stride) {
+
+            scalar_t first_val = flat_frames[first_frame_ix][p];
+            scalar_t second_val = flat_frames[second_frame_ix][p];
+
+            scalar_t write_val = first_val * first_weight + second_val * second_weight;
+            us_dest[p][t] = write_val;
         }
     }
 }
 
+
 torch::Tensor upsample_transpose_flat_cuda(torch::Tensor flat_time_data,
                                            torch::Tensor selection,
                                            torch::Tensor weights) {
+    /*
+     *
+     * @param flat_time_data
+     * @param selection
+     * @param weights
+     */
 
     int64_t n_bins = selection.size(0);
     int64_t n_pix = flat_time_data.size(1);
@@ -306,10 +307,14 @@ torch::Tensor upsample_transpose_flat_cuda(torch::Tensor flat_time_data,
             .layout(torch::kStrided)
             .device(flat_time_data.device());
 
-    torch::Tensor dest = torch::empty(std::vector<int64_t>({n_pix, n_bins}), options);
+    torch::Tensor dest = torch::zeros(std::vector<int64_t>({n_pix, n_bins}), options);
 
-    const int threads = 1024;
-    const dim3 blocks((n_bins + threads - 1) / threads);
+    const int time_threads = 32;
+    const int pix_threads = 16;
+
+    const dim3 threads(time_threads, pix_threads);
+    const dim3 blocks((n_bins + time_threads - 1) / time_threads,
+                      (n_pix + pix_threads - 1) / pix_threads);
 
     AT_DISPATCH_FLOATING_TYPES_AND_HALF(dest.scalar_type(), "sparse_upsample_transpose_flat", [&] {
         sparse_time_domain_upsample_flat_T_kernel<scalar_t><<<blocks, threads>>>(
