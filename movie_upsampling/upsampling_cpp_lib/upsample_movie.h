@@ -118,7 +118,7 @@ void _raw_compute_backward_interval_overlaps(
         while ((sbin < n_spike_bins - 1) && spike_bin_cutoffs.template valueAt(sbin + 1) < frame_start) ++sbin;
 
         int64_t overlap_count = 0;
-        while (overlap_count < max_n_overlaps && sbin < (n_spike_bins) &&
+        while (overlap_count < max_n_overlaps && sbin < n_spike_bins &&
                spike_bin_cutoffs.template valueAt(sbin) <= frame_end) {
 
             T low = spike_bin_cutoffs.template valueAt(sbin);
@@ -132,7 +132,15 @@ void _raw_compute_backward_interval_overlaps(
 
             ++sbin;
         }
+
         --sbin;
+        // fill the remaining entries (for unused bin slots) with values
+        // that don't affect the output, rather than INVALID_FRAME so that
+        // we can get rid of a branch in the GPU code
+        for (; overlap_count < max_n_overlaps; ++overlap_count) {
+            backward_overlaps.template storeTo(sbin, mv, overlap_count);
+            backward_weights.template storeTo(0.0, mv, overlap_count);
+        }
     }
 }
 

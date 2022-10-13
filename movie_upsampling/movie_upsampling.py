@@ -160,7 +160,6 @@ class EMJitterFrame(torch.autograd.Function):
             d_output_d_jittered_frame,
             jitter_coords
         )
-
         return backward_frame, None
 
 

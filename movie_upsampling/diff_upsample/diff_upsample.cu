@@ -135,9 +135,8 @@ __global__ void _cu_time_upsample_backward(
             for (int64_t ix = 0; ix < max_overlap_frames; ++ix) {
 
                 int64_t read_from_ix = backward_selection[b][f][ix];
-                if (read_from_ix == INVALID_IDX) break;
-
-                acc += (dloss_dupsample[b][read_from_ix][p] * backward_weights[b][f][ix]);
+                scalar_t to_add = dloss_dupsample[b][read_from_ix][p] * backward_weights[b][f][ix];
+                acc += to_add;
             }
             dloss_dnoupsample[b][f][p] = acc;
         }
@@ -223,7 +222,6 @@ __global__ void _cu_shared_clock_time_upsample_transpose_forward(
         scalar_t first_frame_w = flat_weights[f][FIRST_OVERLAP];
         scalar_t second_frame_w = flat_weights[f][SECOND_OVERLAP];
 
-
         for (int64_t p = p_index; p < n_pix; p += p_stride) {
 
             scalar_t first_val = flat_noupsample[b][first_frame_ix][p];
@@ -308,9 +306,8 @@ __global__ void _cu_shared_clock_time_upsample_transpose_backward(
             scalar_t acc = 0.0;
             for (int64_t ix = 0; ix < max_overlap_frames; ++ix) {
                 int64_t read_from_ix = backward_selection[f][ix];
-                if (read_from_ix == INVALID_IDX) break;
-
-                acc += (dloss_dupsample[b][p][read_from_ix] * backward_weights[f][ix]);
+                scalar_t to_add = dloss_dupsample[b][p][read_from_ix] * backward_weights[f][ix];
+                acc += to_add;
             }
 
             dloss_dnoupsample[b][f][p] = acc;
@@ -466,11 +463,9 @@ __global__ void _cu_time_upsample_transpose_backward(
 
             scalar_t acc = 0.0;
             for (int64_t ix = 0; ix < max_overlap_frames; ++ix) {
-
                 int64_t read_from_ix = backward_selection[b][f][ix];
-                if (read_from_ix == INVALID_IDX) break;
-
-                acc += (dloss_dupsample[b][p][read_from_ix] * backward_weights[b][f][ix]);
+                scalar_t to_add = dloss_dupsample[b][p][read_from_ix] * backward_weights[b][f][ix];
+                acc += to_add;
             }
             dloss_dnoupsample[b][f][p] = acc;
         }
