@@ -163,6 +163,33 @@ class EMJitterFrame(torch.autograd.Function):
         return backward_frame, None
 
 
+class SingleEMJitterFrame(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx,
+                input_frame: torch.Tensor,
+                grid_coordinates: torch.Tensor) -> torch.Tensor:
+        '''
+
+        :param ctx:
+        :param input_frame: shape (height, width)
+        :param grid_coordinates: shape (n_grid, n_jittered_frames, 2)
+        :return: shape (n_grid, n_jittered_frames, height, width)
+        '''
+
+        ctx.save_for_backward(grid_coordinates)
+        return jitter_cuda.nobatch_grid_jitter_single_frame_forward(input_frame,
+                                                                    grid_coordinates)
+
+    @staticmethod
+    def backward(ctx, d_output_d_jittered_frame: torch.Tensor) -> Tuple[Optional[torch.Tensor], ...]:
+        jitter_coords, = ctx.saved_tensors
+        backward_frame = jitter_cuda.nobatch_grid_jitter_single_frame_backward(
+            d_output_d_jittered_frame,
+            jitter_coords
+        )
+        return backward_frame, None
+
+
 class JitterOnlyFrame(torch.autograd.Function):
     '''
     Wrapper for autograd function that performs forward and backward
@@ -496,7 +523,6 @@ class SharedClockTimeUpsampleTransposeFlat(torch.autograd.Function):
     @staticmethod
     def backward(ctx,
                  d_loss_d_upsample) -> Tuple[Optional[torch.Tensor], ...]:
-
         share_backward_sel, share_backward_weights = ctx.saved_tensors
         grad_noupsample = diff_upsample.shared_clock_upsample_transpose_flat_backward(
             d_loss_d_upsample,
@@ -505,4 +531,3 @@ class SharedClockTimeUpsampleTransposeFlat(torch.autograd.Function):
         )
 
         return grad_noupsample, None, None, None, None
-

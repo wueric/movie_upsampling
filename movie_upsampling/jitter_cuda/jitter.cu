@@ -456,6 +456,237 @@ torch::Tensor _beam_jitter_repeat_frames_forward(
 
 
 template<typename scalar_t>
+__global__ void _kern_nobatch_retune1_grid_jitter_single_frame_forward(
+        const torch::PackedTensorAccessor32<scalar_t, 2, torch::RestrictPtrTraits> frame,
+        const torch::PackedTensorAccessor32<int64_t, 3, torch::RestrictPtrTraits> jitter_coord,
+        torch::PackedTensorAccessor32<scalar_t, 4, torch::RestrictPtrTraits> jitter_dest) {
+    /*
+     * Assumes no batching, since THAT will probably be too slow, and realistically we would
+     * be using batch sizes of at most 2
+     *
+     *
+     * Different pattern for memory accesses than _kern_grid_jitter_single_frame_forward;
+     * the hypothesis behind why _kern_grid_jitter_single_frame_forward is particularly slow
+     * is that we have a bunch of different thread blocks that all need to read from the same
+     * frame from memory
+     *
+     * Alternative strategy using shared memory (note, in order for shared memory to
+     * actually be useful data needs to be read once, use many times, so the previous
+     * parallelization doesn't work since that is read once, use once)
+     *
+     *      Each thread block is responsible for only a small patch of ONE image
+     *      and writes that patch of image everywhere that it needs to go
+     *
+     *      Every (n_grid, n_jittered_frames) shares the same eye movement offset
+     *      so this naturally should live in shared memory
+     *
+     *      There is a maximum of either 48 or 64 kb of shared memory per streaming
+     *      multiprocessor, so we want to use less than that per block otherwise
+     *      occupancy will be bad.
+     *
+     *      threads are (patch_height=32, patch_width=32)
+     *      blocks are (ceil(height / patch_height), ceil(width // patch_width))
+     *
+     * The amount to shift by will live in shared memory, since that is the same for
+     * every thread block; we will require (n_jittered_frames * 2 * sizeof(int64)) shared memory
+     *
+     * @param frame: shape (height, width)
+     * @param jitter_coord: shape (n_grid, n_jittered_frames, 2)
+     * @param jitter_dest: shape (n_grid, n_jittered_frames, height, width)
+     *                      OUTPUT
+     */
+
+    // should have size (n_jittered_frames * 2) which is not too much
+    extern __shared__ int64_t jitter_shifts[];
+
+    const int64_t n_grid = jitter_coord.size(0);
+    const int64_t n_jittered_frames = jitter_coord.size(1);
+    const int64_t g = threadIdx.x + blockDim.x * blockIdx.x;
+
+    // Use very first thread to load coordinates into shared memory
+    if (threadIdx.x == 0 && threadIdx.y == 0 && threadIdx.z == 0) {
+        // load into shared memory
+        for (int64_t f = 0; f < n_jittered_frames; ++f) {
+            int64_t offset = f * 2;
+            jitter_shifts[offset] = jitter_coord[g][f][0];
+            jitter_shifts[offset + 1] = jitter_coord[g][f][1];
+        }
+    }
+    __syncthreads();
+
+    const int64_t height = frame.size(0);
+    const int64_t width = frame.size(1);
+
+    const int64_t h = threadIdx.y + blockDim.y * blockIdx.y;
+    const int64_t w = threadIdx.z + blockDim.z * blockIdx.z;
+
+    if (h < height && w < width) {
+        scalar_t pix_val = frame[h][w];
+        for (int64_t f = 0; f < n_jittered_frames; ++f) {
+
+            int64_t offset = f * 2;
+            int64_t h_shift = jitter_shifts[offset];
+            int64_t w_shift = jitter_shifts[offset + 1];
+
+            int64_t write_h = h + h_shift; // FIXME check this;
+            // source is supposed to less than dest
+            // for positive jitter so correct
+            int64_t write_w = w + w_shift; // FIXME check this
+
+            bool inside_h = (write_h >= 0) && (write_h < height);
+            bool inside_w = (write_w >= 0) && (write_w < width);
+
+            if (inside_h && inside_w) {
+                jitter_dest[g][f][write_h][write_w] = pix_val;
+            }
+        }
+    }
+}
+
+torch::Tensor _nobatch_grid_jitter_single_frame_forward(
+        torch::Tensor single_frame,
+        torch::Tensor grid_jitter_coords) {
+
+    /*
+     * @param single_frame: shape (height, width)
+     * @param grid_jitter_coords: shape (n_grid, n_jittered_frames, 2)
+     *
+     * returns: shape (n_grid, n_jittered_frames, height, width)
+     */
+
+    const int64_t height = single_frame.size(0);
+    const int64_t width = single_frame.size(1);
+
+    const int64_t n_grid = grid_jitter_coords.size(0);
+    const int64_t n_jitter_frames = grid_jitter_coords.size(1);
+
+    auto options = torch::TensorOptions()
+            .dtype(single_frame.dtype())
+            .layout(torch::kStrided)
+            .device(single_frame.device());
+    torch::Tensor dest = torch::zeros(std::vector<int64_t>({n_grid, n_jitter_frames, height, width}),
+                                      options);
+
+    const int64_t height_threads = 32;
+    const int64_t width_threads = 32;
+
+    const int64_t h_blocks = (height + height_threads - 1) / height_threads;
+    const int64_t w_blocks = (width + width_threads - 1) / width_threads;
+
+    const dim3 threads(1, height_threads, width_threads);
+    const dim3 blocks(n_grid, h_blocks, w_blocks);
+
+    AT_DISPATCH_FLOATING_TYPES_AND_HALF(
+            dest.scalar_type(), "_kern_nobatch_retune1_grid_jitter_single_frame_forward",
+            [&] {
+                _kern_nobatch_retune1_grid_jitter_single_frame_forward<scalar_t>
+                <<<blocks, threads, sizeof(int64_t) * (2 * n_jitter_frames)>>>(
+                        single_frame.packed_accessor32<scalar_t, 2, torch::RestrictPtrTraits>(),
+                        grid_jitter_coords.packed_accessor32<int64_t, 3, torch::RestrictPtrTraits>(),
+                        dest.packed_accessor32<scalar_t, 4, torch::RestrictPtrTraits>());
+            });
+
+    return dest;
+}
+
+template<typename scalar_t>
+__global__ void _kern_nobatch_grid_jitter_single_frame_backward_noreduce(
+        const torch::PackedTensorAccessor32<scalar_t, 4, torch::RestrictPtrTraits> d_output_d_jittered_frames,
+        const torch::PackedTensorAccessor32<int64_t, 3, torch::RestrictPtrTraits> jitter_coords,
+        torch::PackedTensorAccessor32<scalar_t, 4, torch::RestrictPtrTraits> d_output_d_static_noreduce_frames) {
+
+    /*
+     *
+     *
+     * We use static shared memory to hold the
+     *
+     * @param d_output_d_jittered_frames: shape (n_grid, n_jittered_frames, height, width)
+     * @param jitter_coords: shape (n_grid, n_jittered_frames, 2)
+     *
+     * output: shape (n_grid, n_jittered_frames, height, width)
+     */
+
+    __shared__ int64_t offset[2];
+    const int64_t g = blockIdx.x;
+    const int64_t f = blockIdx.y;
+
+    const int64_t h_index = threadIdx.x;
+    int64_t h_stride = blockDim.x;
+
+    const int64_t w_index = threadIdx.y;
+    int64_t w_stride = blockDim.y;
+
+    if (h_index == 0 && w_index == 0) {
+        offset[0] = jitter_coords[g][f][0];
+        offset[1] = jitter_coords[g][f][1];
+    }
+
+    __syncthreads();
+
+    const int64_t height = d_output_d_jittered_frames.size(2);
+    const int64_t width = d_output_d_jittered_frames.size(3);
+
+    int64_t jitter_h = offset[0];
+    int64_t jitter_w = offset[1];
+
+    scalar_t ZERO = 0.0;
+    for (int64_t h = h_index; h < height; h += h_stride) {
+        int64_t read_h = h + jitter_h;
+        bool sat_h = (read_h >= 0) && (read_h < height);
+
+        for (int64_t w = w_index; w < width; w += w_stride) {
+
+            int64_t read_w = w + jitter_w;
+            bool sat_w = (read_w >= 0) && (read_w < width);
+
+            scalar_t d_unjittered = (sat_h && sat_w) ? d_output_d_jittered_frames[g][f][read_h][read_w] : ZERO;
+            d_output_d_static_noreduce_frames[g][f][h][w] = d_unjittered;
+        }
+    }
+}
+
+
+torch::Tensor _nobatch_grid_jitter_single_frame_backward(
+        torch::Tensor d_output_d_jittered_frames,
+        torch::Tensor grid_jitter_coords) {
+    /*
+     * @param d_output_d_jittered_frames: shape (n_grid, n_jittered_frames, height, width)
+     * @param grid_jitter_coords: shape (n_grid, n_jittered_frames, 2)
+     *
+     * returns: shape (height, width)
+     */
+
+    const int64_t n_grid = d_output_d_jittered_frames.size(0);
+    const int64_t n_jittered_frames = d_output_d_jittered_frames.size(1);
+    const int64_t height = d_output_d_jittered_frames.size(2);
+    const int64_t width = d_output_d_jittered_frames.size(3);
+
+    auto options = torch::TensorOptions()
+            .dtype(d_output_d_jittered_frames.dtype())
+            .layout(torch::kStrided)
+            .device(d_output_d_jittered_frames.device());
+
+    torch::Tensor d_unjittered = torch::zeros(std::vector<int64_t>({n_grid, n_jittered_frames, height, width}),
+                                              options);
+
+    const dim3 threads(32, 32);
+    const dim3 blocks(n_grid, n_jittered_frames);
+
+    AT_DISPATCH_FLOATING_TYPES_AND_HALF(d_unjittered.scalar_type(),
+                                        "_kern_nobatch_grid_jitter_single_frame_backward_noreduce", [&] {
+                _kern_nobatch_grid_jitter_single_frame_backward_noreduce<scalar_t><<<blocks, threads>>>(
+                    d_output_d_jittered_frames.packed_accessor32<scalar_t, 4, torch::RestrictPtrTraits>(),
+                            grid_jitter_coords.packed_accessor32<int64_t, 3, torch::RestrictPtrTraits>(),
+                            d_unjittered.packed_accessor32<scalar_t, 4, torch::RestrictPtrTraits>());
+            });
+
+    // now we have to do a reduction over dest to sum over the grid dimension
+    // and the frame dimension
+    return d_unjittered.sum(1).sum(0);
+}
+
+
+template<typename scalar_t>
 __global__ void _kern_grid_jitter_single_frame_forward(
         const torch::PackedTensorAccessor32<scalar_t, 3, torch::RestrictPtrTraits> frame,
         const torch::PackedTensorAccessor32<int64_t, 4, torch::RestrictPtrTraits> jitter_coord,

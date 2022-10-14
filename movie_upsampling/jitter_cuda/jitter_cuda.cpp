@@ -158,6 +158,42 @@ torch::Tensor grid_jitter_single_frame_backward(
 }
 
 
+torch::Tensor _nobatch_grid_jitter_single_frame_forward(
+        torch::Tensor single_frame,
+        torch::Tensor grid_jitter_coords);
+
+
+torch::Tensor nobatch_grid_jitter_single_frame_forward(
+        torch::Tensor single_frame,
+        torch::Tensor grid_jitter_coords) {
+
+    CHECK_INPUT(single_frame);
+    CHECK_INPUT(grid_jitter_coords);
+
+    const at::cuda::OptionalCUDAGuard device_guard(device_of(single_frame));
+    return _nobatch_grid_jitter_single_frame_forward(single_frame, grid_jitter_coords);
+}
+
+
+torch::Tensor _nobatch_grid_jitter_single_frame_backward(
+        torch::Tensor d_output_d_jittered_frames,
+        torch::Tensor grid_jitter_coords);
+
+
+torch::Tensor nobatch_grid_jitter_single_frame_backward(
+        torch::Tensor d_output_d_jittered_frames,
+        torch::Tensor grid_jitter_coords) {
+
+    CHECK_INPUT(d_output_d_jittered_frames);
+    CHECK_INPUT(grid_jitter_coords);
+
+    const at::cuda::OptionalCUDAGuard device_guard(device_of(d_output_d_jittered_frames));
+
+    return _nobatch_grid_jitter_single_frame_backward(d_output_d_jittered_frames,
+                                                      grid_jitter_coords);
+}
+
+
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m
 ) {
 m.def("jitter_movie_forward", &jitter_movie_forward, "Jitter movie forward pass");
@@ -169,5 +205,7 @@ m.def("frame_repeat_backward", &frame_repeat_backward, "Repeat frames backward p
 m.def("beam_jitter_repeat_frames_forward", &beam_jitter_repeat_frames_forward, "Beam search jitter repeat forward pass");
 m.def("grid_jitter_single_frame_forward", &grid_jitter_single_frame_forward, "Forward pass for batched EM jitter");
 m.def("grid_jitter_single_frame_backward", &grid_jitter_single_frame_backward, "Backward pass for batched EM jitter");
+m.def("nobatch_grid_jitter_single_frame_forward", &nobatch_grid_jitter_single_frame_forward, "Forward pass for no-batch EM jitter");
+m.def("nobatch_grid_jitter_single_frame_backward", &nobatch_grid_jitter_single_frame_backward, "Backward pass for no-batch EM jitter");
 }
 
