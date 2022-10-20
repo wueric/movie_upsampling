@@ -270,31 +270,44 @@ __global__ void _kern_jitter_frames_forward(
         const torch::PackedTensorAccessor32<int64_t, 3, torch::RestrictPtrTraits> jitter_coords,
         torch::PackedTensorAccessor32<scalar_t, 4, torch::RestrictPtrTraits> jitter_dest) {
 
-    const int64_t height = frames.size(1);
-    int64_t h_index = threadIdx.x;
-    int64_t h_stride = blockDim.x;
+    extern __shared__ int64_t jitter_shifts[];
 
-    const int64_t width = frames.size(2);
-    int64_t w_index = threadIdx.y;
-    int64_t w_stride = blockDim.y;
+    const int32_t n_jittered_frames = jitter_coords.size(1);
+    const int32_t b = threadIdx.x + blockIdx.x * blockDim.x;
+    if (threadIdx.x == 0 && threadIdx.y == 0 && threadIdx.z == 0) {
+        for (int32_t f = 0; f < n_jittered_frames; ++f) {
+            int32_t offset = f * 2;
+            jitter_shifts[offset] = jitter_coords[b][f][0];
+            jitter_shifts[offset+1] = jitter_coords[b][f][1];
+        }
+    }
+    __syncthreads();
 
-    int64_t b = blockIdx.x;
-    int64_t f = blockIdx.y;
+    const int32_t height = frames.size(1);
+    const int32_t width = frames.size(2);
 
-    int64_t jitter_h = jitter_coords[b][f][0];
-    int64_t jitter_w = jitter_coords[b][f][1];
+    const int32_t h = threadIdx.y + blockDim.y * blockIdx.y;
+    const int32_t w = threadIdx.z + blockDim.z * blockIdx.z;
 
-    scalar_t ZERO = 0.0;
-    for (int64_t h = h_index; h < height; h += h_stride) {
-        int64_t source_h = h - jitter_h;
-        bool valid_source_h = (source_h >= 0) && (source_h < height);
+    if (h < height && w < width) {
+        scalar_t pix_val = frames[b][h][w];
+        for (int32_t f = 0; f < n_jittered_frames; ++f) {
+            int32_t offset = f * 2;
 
-        for (int64_t w = w_index; w < width; w += w_stride) {
-            int64_t source_w = w - jitter_w;
-            bool valid_source_w = (source_w >= 0) && (source_w < width);
+            int64_t h_shift = jitter_shifts[offset];
+            int64_t w_shift = jitter_shifts[offset+1];
 
-            jitter_dest[b][f][h][w] = (valid_source_h && valid_source_w) ?
-                                      frames[b][source_h][source_w] : ZERO;
+            // source is supposed to less than dest
+            // for positive jitter so correct
+            int64_t write_h = h + h_shift;
+            int64_t write_w = w + w_shift;
+
+            bool inside_h = (write_h >= 0) && (write_h < height);
+            bool inside_w = (write_w >= 0) && (write_w < width);
+
+            if (inside_h && inside_w) {
+                jitter_dest[b][f][write_h][write_w] = pix_val;
+            }
         }
     }
 }
@@ -323,11 +336,18 @@ torch::Tensor _jitter_frames_forward(
             .device(frames.device());
     torch::Tensor dest = torch::zeros(std::vector<int64_t>({batch, n_jitter_frames, height, width}), options);
 
-    const dim3 threads(32, 32);
-    const dim3 blocks(batch, n_jitter_frames);
+    const int64_t height_threads = 32;
+    const int64_t width_threads = 32;
+
+    const int64_t h_blocks = (height + height_threads - 1) / height_threads;
+    const int64_t w_blocks = (width + width_threads - 1) / width_threads;
+
+
+    const dim3 threads(1, height_threads, width_threads);
+    const dim3 blocks(batch, h_blocks, w_blocks);
 
     AT_DISPATCH_FLOATING_TYPES_AND_HALF(dest.scalar_type(), "_kern_jitter_frames_forward", [&] {
-        _kern_jitter_frames_forward<scalar_t><<<blocks, threads>>>(
+        _kern_jitter_frames_forward<scalar_t><<<blocks, threads, sizeof(int64_t) * (2 * n_jitter_frames)>>>(
                 frames.packed_accessor32<scalar_t, 3, torch::RestrictPtrTraits>(),
                 jitter_coords.packed_accessor32<int64_t, 3, torch::RestrictPtrTraits>(),
                 dest.packed_accessor32<scalar_t, 4, torch::RestrictPtrTraits>());
