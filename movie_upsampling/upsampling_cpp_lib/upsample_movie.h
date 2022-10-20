@@ -50,7 +50,7 @@ int64_t _raw_compute_interval_overlaps(CNDArrayWrapper::StaticNDArrayWrapper<T, 
          * frame so that we can compute the overlap selection and weights for the backward pass
          */
         int64_t frame_low = frame_idx;
-        while (frame_low < n_frames && movie_bin_cutoffs.valueAt(frame_low + 1) < low) ++frame_low;
+        while ((frame_low < (n_frames - 1)) && (movie_bin_cutoffs.valueAt(frame_low + 1) < low)) ++frame_low;
 
         int64_t frame_high = frame_low;
         float curr_frame_start = movie_bin_cutoffs.valueAt(frame_high);
@@ -62,7 +62,9 @@ int64_t _raw_compute_interval_overlaps(CNDArrayWrapper::StaticNDArrayWrapper<T, 
             output_overlaps.storeTo(frame_high, us_idx, 0);
             frame_weights.storeTo(1.0, us_idx, 0);
 
-            output_overlaps.storeTo(INVALID_FRAME, us_idx, 1);
+            output_overlaps.storeTo(frame_high, us_idx, 1); // this value should never be used
+            // simply a placeholder that corresponds to a valid memory address
+            // so that we can avoid branching in the CUDA code
             frame_weights.storeTo(0.0, us_idx, 1);
 
             frame_idx = frame_high;
@@ -116,7 +118,7 @@ void _raw_compute_backward_interval_overlaps(
         while ((sbin < n_spike_bins - 1) && spike_bin_cutoffs.template valueAt(sbin + 1) < frame_start) ++sbin;
 
         int64_t overlap_count = 0;
-        while (overlap_count < max_n_overlaps && sbin < (n_spike_bins) &&
+        while (overlap_count < max_n_overlaps && sbin < n_spike_bins &&
                spike_bin_cutoffs.template valueAt(sbin) <= frame_end) {
 
             T low = spike_bin_cutoffs.template valueAt(sbin);
@@ -130,7 +132,15 @@ void _raw_compute_backward_interval_overlaps(
 
             ++sbin;
         }
+
         --sbin;
+        // fill the remaining entries (for unused bin slots) with values
+        // that don't affect the output, rather than INVALID_FRAME so that
+        // we can get rid of a branch in the GPU code
+        for (; overlap_count < max_n_overlaps; ++overlap_count) {
+            backward_overlaps.template storeTo(sbin, mv, overlap_count);
+            backward_weights.template storeTo(0.0, mv, overlap_count);
+        }
     }
 }
 
