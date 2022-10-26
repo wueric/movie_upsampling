@@ -109,8 +109,21 @@ void _raw_compute_backward_interval_overlaps(
     int64_t n_frames = movie_bin_cutoffs.shape[0] - 1;
     int64_t max_n_overlaps = backward_overlaps.shape[1];
 
+    int64_t mv = 0;
     int64_t sbin = 0;
-    for (int64_t mv = 0; mv < n_frames; ++mv) {
+    T first_bin_start = spike_bin_cutoffs.template valueAt(0);
+
+    // for the case where the frames at the beginning don't overlap
+    // with any of the spike bins
+    while (mv < (n_frames - 1) && (movie_bin_cutoffs.template valueAt(mv + 1) < first_bin_start)) {
+        for (int64_t overlap_count = 0; overlap_count < max_n_overlaps; ++overlap_count) {
+            backward_overlaps.template storeTo(0, mv, overlap_count);
+            backward_weights.template storeTo(0.0, mv, overlap_count);
+        }
+        ++mv;
+    };
+
+    for (; mv < n_frames; ++mv) {
         T frame_start = movie_bin_cutoffs.template valueAt(mv);
         T frame_end = movie_bin_cutoffs.template valueAt(mv + 1);
 
