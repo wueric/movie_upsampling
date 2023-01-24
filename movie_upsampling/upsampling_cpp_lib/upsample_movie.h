@@ -25,6 +25,153 @@ using ContigNPArray = py::array_t<T, py::array::c_style | py::array::forcecast>;
 
 
 template<class T>
+void _raw_integer_upsample_movie(
+        CNDArrayWrapper::StaticNDArrayWrapper<T, 2> movie_flat_noupsample,
+        CNDArrayWrapper::StaticNDArrayWrapper<T, 2> movie_flat_upsampled,
+        int64_t upsample_factor) {
+
+    /*
+     * Code to do dumb integer scale upsampling (i.e. 2x upsampling, 3x upsampling,
+     * 4x upsampling) of the movie frames
+     *
+     * Obviously this method does not attempt to account for frame rate instabilities
+     *
+     * Primary use case: temporally upsampling white noise stimuli in a high-performance way
+     *
+     *
+     * movie_flat_noupsample: shape (n_frames, n_pixels)
+     * movie_flat_upsampled: shape (upsample_factor * n_frames, n_pixels)
+     *
+     */
+
+    int64_t n_frames_noupsample = movie_flat_noupsample.shape[0];
+    int64_t n_pix_upsample = movie_flat_noupsample.shape[1];
+
+    for (int64_t t = 0; t < n_frames_noupsample; ++t) {
+        for (int64_t p = 0; t < n_pix_upsample; ++t) {
+
+            T val_read = movie_flat_noupsample.template valueAt(t, p);
+
+            for (int64_t u = 0; u < upsample_factor; ++u) {
+                movie_flat_upsampled.template storeTo(val_read, t * upsample_factor + u, p);
+            }
+        }
+    }
+}
+
+
+template<class T>
+void _raw_integer_upsample_transpose_movie(
+        CNDArrayWrapper::StaticNDArrayWrapper<T, 2> movie_flat_noupsample,
+        CNDArrayWrapper::StaticNDArrayWrapper<T, 2> movie_flat_upsampled,
+        int64_t upsample_factor) {
+
+    /*
+     * Code to do dumb integer scale upsampling (i.e. 2x upsampling, 3x upsampling,
+     * 4x upsampling) of the movie frames
+     *
+     * Also flips the time axis to the last dimension, so that temporal convolutions can
+     * be faster
+     *
+     * Obviously this method does not attempt to account for frame rate instabilities
+     *
+     * Primary use case: temporally upsampling white noise stimuli in a high-performance way
+     *
+     *
+     * movie_flat_noupsample: shape (n_frames, n_pixels)
+     * movie_flat_upsampled: shape (n_pixels, upsample_factor * n_frames)
+     *
+     */
+
+    int64_t n_frames_noupsample = movie_flat_noupsample.shape[0];
+    int64_t n_pix_upsample = movie_flat_noupsample.shape[1];
+
+    for (int64_t t = 0; t < n_frames_noupsample; ++t) {
+        for (int64_t p = 0; t < n_pix_upsample; ++t) {
+
+            T val_read = movie_flat_noupsample.template valueAt(t, p);
+
+            for (int64_t u = 0; u < upsample_factor; ++u) {
+                movie_flat_upsampled.template storeTo(val_read, p, t * upsample_factor + u);
+            }
+        }
+    }
+}
+
+
+template<class F>
+ContigNPArray<F> _integer_upsample_transpose_movie(
+        ContigNPArray<F> movie_flat,
+        int64_t upsample_factor) {
+
+    py::buffer_info movie_info = movie_flat.request();
+    auto *movie_flat_ptr = static_cast<F *>(movie_info.ptr);
+    const int64_t n_frames_orig = movie_info.shape[0];
+    const int64_t n_pix = movie_info.shape[1];
+
+    CNDArrayWrapper::StaticNDArrayWrapper<F, 2> orig_movie_wrapper(movie_flat_ptr,
+                                                                   std::array<int64_t, 2>({n_frames_orig, n_pix}));
+
+    auto frame_weight_info = py::buffer_info(
+            nullptr,
+            sizeof(F),
+            py::format_descriptor<F>::value,
+            2, /* How many dimensions */
+            {static_cast<py::ssize_t>(n_pix), static_cast<py::ssize_t>(n_frames_orig * upsample_factor)}, /* shape */
+            {static_cast<py::ssize_t>(n_frames_orig * upsample_factor * sizeof(F)),
+             static_cast<py::ssize_t>(sizeof(F))} /* stride */
+    );
+    ContigNPArray<float> frame_weights = ContigNPArray<F>(frame_weight_info);
+
+    CNDArrayWrapper::StaticNDArrayWrapper<F, 2> transpose_upsample_movie_wrapper(
+            static_cast<F *>(frame_weights.request().ptr),
+            std::array<int64_t, 2>({n_pix, n_frames_orig * upsample_factor})
+    );
+
+    _raw_integer_upsample_transpose_movie(orig_movie_wrapper,
+                                          transpose_upsample_movie_wrapper,
+                                          upsample_factor)
+
+    return frame_weights;
+}
+
+template<class F>
+ContigNPArray<F> _integer_upsample_movie(
+        ContigNPArray<F> movie_flat,
+        int64_t upsample_factor) {
+
+    py::buffer_info movie_info = movie_flat.request();
+    auto *movie_flat_ptr = static_cast<F *>(movie_info.ptr);
+    const int64_t n_frames_orig = movie_info.shape[0];
+    const int64_t n_pix = movie_info.shape[1];
+
+    CNDArrayWrapper::StaticNDArrayWrapper<F, 2> orig_movie_wrapper(movie_flat_ptr,
+                                                                   std::array<int64_t, 2>({n_frames_orig, n_pix}));
+
+    auto frame_weight_info = py::buffer_info(
+            nullptr,
+            sizeof(F),
+            py::format_descriptor<F>::value,
+            2, /* How many dimensions */
+            {static_cast<py::ssize_t>(n_frames_orig * upsample_factor), static_cast<py::ssize_t>(n_pix)}, /* shape */
+            {static_cast<py::ssize_t>(n_pix * sizeof(F)), static_cast<py::ssize_t>(sizeof(F))} /* stride */
+    );
+    ContigNPArray<float> frame_weights = ContigNPArray<F>(frame_weight_info);
+
+    CNDArrayWrapper::StaticNDArrayWrapper<F, 2> transpose_upsample_movie_wrapper(
+            static_cast<F *>(frame_weights.request().ptr),
+            std::array<int64_t, 2>({n_frames_orig * upsample_factor, n_pix})
+    );
+
+    _raw_integer_upsample_movie(orig_movie_wrapper,
+                                transpose_upsample_movie_wrapper,
+                                upsample_factor)
+
+    return frame_weights;
+}
+
+
+template<class T>
 int64_t _raw_compute_interval_overlaps(CNDArrayWrapper::StaticNDArrayWrapper<T, 1> movie_bin_cutoffs,
                                        CNDArrayWrapper::StaticNDArrayWrapper<T, 1> spike_bin_cutoffs,
                                        CNDArrayWrapper::StaticNDArrayWrapper<int64_t, 2> output_overlaps,
@@ -256,15 +403,15 @@ _batch_compute_interval_overlaps(ContigNPArray<F> batched_movie_bin_cutoffs,
     for (int64_t b = 0; b < batch; ++b) {
         int64_t max_bins_for_trial = _raw_compute_interval_overlaps<F>(
                 movie_bin_wrapper.template slice<1>(CNDArrayWrapper::makeIdxSlice(b),
-                                           CNDArrayWrapper::makeAllSlice()),
+                                                    CNDArrayWrapper::makeAllSlice()),
                 spike_bin_wrapper.template slice<1>(CNDArrayWrapper::makeIdxSlice(b),
-                                           CNDArrayWrapper::makeAllSlice()),
+                                                    CNDArrayWrapper::makeAllSlice()),
                 frame_ix_wrapper.template slice<2>(CNDArrayWrapper::makeIdxSlice(b),
                                                    CNDArrayWrapper::makeAllSlice(),
                                                    CNDArrayWrapper::makeAllSlice()),
                 frame_weight_wrapper.template slice<2>(CNDArrayWrapper::makeIdxSlice(b),
-                                              CNDArrayWrapper::makeAllSlice(),
-                                              CNDArrayWrapper::makeAllSlice())
+                                                       CNDArrayWrapper::makeAllSlice(),
+                                                       CNDArrayWrapper::makeAllSlice())
         );
 
         max_bins_for_frame = std::max(max_bins_for_frame, max_bins_for_trial);

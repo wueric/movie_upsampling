@@ -9,6 +9,32 @@ from . import jitter_cuda
 from . import diff_upsample
 
 
+def integer_upsample_movie(frames_flat: np.ndarray,
+                           upsample_factor: int) -> np.ndarray:
+    '''
+
+    :param frames_flat: shape (n_frames, n_pixels)
+    :param upsample_factor: int
+    :return: shape (n_frames * upsample_factor, n_pixels)
+    '''
+
+    return upsampling_cpp_lib._integer_upsample_movie(frames_flat,
+                                                      upsample_factor)
+
+
+def integer_upsample_transpose_movie(frames_flat: np.ndarray,
+                                     upsample_factor: int) -> np.ndarray:
+    '''
+
+    :param frames_flat: shape (n_frames, n_pixels)
+    :param upsample_factor:
+    :returns: shape (n_pixels, n_frames * upsample_factor)
+    '''
+    return upsampling_cpp_lib._integer_upsample_transpose_movie(
+        frames_flat,
+        upsample_factor)
+
+
 def compute_interval_overlaps(movie_cutoff_times: np.ndarray,
                               spike_bin_cutoff_times: np.ndarray):
     '''

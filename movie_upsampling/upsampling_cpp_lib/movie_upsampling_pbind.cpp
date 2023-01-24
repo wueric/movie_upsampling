@@ -20,5 +20,14 @@ m.def("_batch_compute_interval_overlaps",
     pybind11::return_value_policy::take_ownership,
     "Computes batched interval overlaps");
 
+m.def("_integer_upsample_movie",
+    &_integer_upsample_movie<float>,
+    pybind11::return_value_policy::take_ownership,
+    "Computes upsamples movie temporally by integer quantity");
+
+m.def("_integer_upsample_transpose_movie",
+    &_integer_upsample_transpose_movie<float>,
+    pybind11::return_value_policy::take_ownership,
+    "Computes upsamples movie temporally by integer quantity, and transposes");
 }
 
