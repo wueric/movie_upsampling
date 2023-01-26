@@ -130,7 +130,7 @@ ContigNPArray<F> _integer_upsample_transpose_movie(
 
     _raw_integer_upsample_transpose_movie(orig_movie_wrapper,
                                           transpose_upsample_movie_wrapper,
-                                          upsample_factor)
+                                          upsample_factor);
 
     return frame_weights;
 }
@@ -165,7 +165,7 @@ ContigNPArray<F> _integer_upsample_movie(
 
     _raw_integer_upsample_movie(orig_movie_wrapper,
                                 transpose_upsample_movie_wrapper,
-                                upsample_factor)
+                                upsample_factor);
 
     return frame_weights;
 }
