@@ -48,7 +48,7 @@ void _raw_integer_upsample_movie(
     int64_t n_pix_upsample = movie_flat_noupsample.shape[1];
 
     for (int64_t t = 0; t < n_frames_noupsample; ++t) {
-        for (int64_t p = 0; t < n_pix_upsample; ++t) {
+        for (int64_t p = 0; p < n_pix_upsample; ++p) {
 
             T val_read = movie_flat_noupsample.template valueAt(t, p);
 
@@ -87,7 +87,7 @@ void _raw_integer_upsample_transpose_movie(
     int64_t n_pix_upsample = movie_flat_noupsample.shape[1];
 
     for (int64_t t = 0; t < n_frames_noupsample; ++t) {
-        for (int64_t p = 0; t < n_pix_upsample; ++t) {
+        for (int64_t p = 0; p < n_pix_upsample; ++p) {
 
             T val_read = movie_flat_noupsample.template valueAt(t, p);
 
@@ -121,7 +121,7 @@ ContigNPArray<F> _integer_upsample_transpose_movie(
             {static_cast<py::ssize_t>(n_frames_orig * upsample_factor * sizeof(F)),
              static_cast<py::ssize_t>(sizeof(F))} /* stride */
     );
-    ContigNPArray<float> frame_weights = ContigNPArray<F>(frame_weight_info);
+    ContigNPArray<F> frame_weights = ContigNPArray<F>(frame_weight_info);
 
     CNDArrayWrapper::StaticNDArrayWrapper<F, 2> transpose_upsample_movie_wrapper(
             static_cast<F *>(frame_weights.request().ptr),
@@ -156,7 +156,7 @@ ContigNPArray<F> _integer_upsample_movie(
             {static_cast<py::ssize_t>(n_frames_orig * upsample_factor), static_cast<py::ssize_t>(n_pix)}, /* shape */
             {static_cast<py::ssize_t>(n_pix * sizeof(F)), static_cast<py::ssize_t>(sizeof(F))} /* stride */
     );
-    ContigNPArray<float> frame_weights = ContigNPArray<F>(frame_weight_info);
+    ContigNPArray<F> frame_weights = ContigNPArray<F>(frame_weight_info);
 
     CNDArrayWrapper::StaticNDArrayWrapper<F, 2> transpose_upsample_movie_wrapper(
             static_cast<F *>(frame_weights.request().ptr),
