@@ -176,17 +176,78 @@ int64_t _raw_compute_interval_overlaps(CNDArrayWrapper::StaticNDArrayWrapper<T, 
                                        CNDArrayWrapper::StaticNDArrayWrapper<T, 1> spike_bin_cutoffs,
                                        CNDArrayWrapper::StaticNDArrayWrapper<int64_t, 2> output_overlaps,
                                        CNDArrayWrapper::StaticNDArrayWrapper<T, 2> frame_weights) {
+    /*
+     * To support batching where there may be spike bins that do not overlap with frames,
+     *      we are modifying this function
+     *
+     * There are now four distinct cases for a given spike bin
+     *
+     * Overlap cases:
+     * (1)  the spike bin occurs completely within a frame, i.e.
+     *          no frame transition occurs within the spike bin
+     * (2)  a frame transition occurs within the spike bin
+     *
+     *
+     * Non-overlap cases:
+     * (3) the spike bin occurs entirely before the first frame.
+     *     In this case all frame weights should be zero, and the
+     *     corresponding value in output_overlaps can be anything
+     *     that corresponds to a valid frame, since it will be
+     *     multiplied by zero
+     *
+     * (4) the spike bin occurs entirely after the last frame
+     *     In this case all frame weights should be zero, and the
+     *     corresponding value in output_overlaps can be anything
+     *     that corresponds to a valid frame, since it will be
+     *     multiplied by zero
+     *
+     *
+     * @param movie_bin_cutoffs: shape (n_frames + 1, )
+     *      movie frame transition times, must be in increasing order
+     * @param spike_bin_cutoffs: shape (n_spike_bins + 1, )
+     *      spike bin edge times, must be in increasing order
+     * @param output_overlaps: shape (n_spike_bins, 2), int64-valued
+     *      index of the frames that the corresponding spike bin
+     *      overlaps with. Since the spike bins are assumed to be always
+     *      smaller than the frame bins, each spike bin can overlap with
+     *      at most 2 frames
+     *
+     * @param frame_weights: shape (n_spike_bins, 2),
+     *      multiplicative weight corresponding to the degree of overlap
+     *      between the spike bin and the frames specified in output_overlaps
+     */
 
     int64_t n_spike_bins = spike_bin_cutoffs.shape[0] - 1;
     int64_t n_frames = movie_bin_cutoffs.shape[0] - 1;
 
     int64_t max_overlapping_bins = 0;
     int64_t curr_frame_n_bins_overlapped = 0;
+
+    int64_t us_idx = 0;
+    while (us_idx < n_spike_bins &&
+           spike_bin_cutoffs.valueAt(us_idx + 1) < movie_bin_cutoffs.valueAt(0)) {
+        // in this loop, the spike bins occur completely before the first frame
+        // this loop takes care of case (3) from the documentation
+        output_overlaps.storeTo(0, us_idx, 0);
+        output_overlaps.storeTo(0, us_idx, 1); // these value should never be used
+        // simply a placeholder that corresponds to a valid memory address
+        // so that we can avoid branching in the CUDA code
+
+        frame_weights.storeTo(0.0, us_idx, 0);
+        frame_weights.storeTo(0.0, us_idx, 1);
+
+        ++us_idx;
+    }
+
     int64_t frame_idx = 0;
-    for (int64_t us_idx = 0; us_idx < n_spike_bins; ++us_idx) {
-        float low = spike_bin_cutoffs.valueAt(us_idx);
-        float high = spike_bin_cutoffs.valueAt(us_idx + 1);
-        float bin_width = high - low;
+    while (us_idx < n_spike_bins &&
+           spike_bin_cutoffs.valueAt(us_idx) < movie_bin_cutoffs.valueAt(n_frames)) {
+
+        // in this loop, the spike bins overlap with at least one frame
+        // this loop takes care of cases (1) and (2) from the documentation
+        T low = spike_bin_cutoffs.valueAt(us_idx);
+        T high = spike_bin_cutoffs.valueAt(us_idx + 1);
+        T bin_width = high - low;
 
         /* Determine which movie frames this interval overlaps with
          * Because this function is guaranteed to be upsampling movies
@@ -200,8 +261,8 @@ int64_t _raw_compute_interval_overlaps(CNDArrayWrapper::StaticNDArrayWrapper<T, 
         while ((frame_low < (n_frames - 1)) && (movie_bin_cutoffs.valueAt(frame_low + 1) < low)) ++frame_low;
 
         int64_t frame_high = frame_low;
-        float curr_frame_start = movie_bin_cutoffs.valueAt(frame_high);
-        float curr_frame_end = movie_bin_cutoffs.valueAt(frame_high + 1);
+        T curr_frame_start = movie_bin_cutoffs.valueAt(frame_high);
+        T curr_frame_end = movie_bin_cutoffs.valueAt(frame_high + 1);
 
         if (curr_frame_start <= low && curr_frame_end >= high) {
             // in this case, the bin occurs entirely within a frame,
@@ -220,7 +281,7 @@ int64_t _raw_compute_interval_overlaps(CNDArrayWrapper::StaticNDArrayWrapper<T, 
             max_overlapping_bins = std::max(max_overlapping_bins, curr_frame_n_bins_overlapped);
         } else {
             // in this case, the bin occurs during a frame transition
-            float interval_overlap = (std::min(curr_frame_end, high) - std::max(curr_frame_start, low)) / bin_width;
+            T interval_overlap = (std::min(curr_frame_end, high) - std::max(curr_frame_start, low)) / bin_width;
             output_overlaps.storeTo(frame_high, us_idx, 0);
             frame_weights.storeTo(interval_overlap, us_idx, 0);
 
@@ -233,6 +294,22 @@ int64_t _raw_compute_interval_overlaps(CNDArrayWrapper::StaticNDArrayWrapper<T, 
             max_overlapping_bins = std::max(max_overlapping_bins, 1 + curr_frame_n_bins_overlapped);
             curr_frame_n_bins_overlapped = 1;
         }
+
+        ++us_idx
+    }
+
+    while (us_idx < n_spike_bins) {
+        // in this loop, the spike bins occur completely after the last frame
+        // this loop takes care of case (4) from the documentation
+        output_overlaps.storeTo(n_frames - 1, us_idx, 0);
+        output_overlaps.storeTo(n_frames - 1, us_idx, 1); // these value should never be used
+        // simply a placeholder that corresponds to a valid memory address
+        // so that we can avoid branching in the CUDA code
+
+        frame_weights.storeTo(0.0, us_idx, 0);
+        frame_weights.storeTo(0.0, us_idx, 1);
+
+        ++us_idx;
     }
 
     return max_overlapping_bins;
