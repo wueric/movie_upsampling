@@ -95,10 +95,30 @@ def flat_sparse_upsample_cuda(movie_frames: torch.Tensor,
     return torch_sparse_upsample_cuda.flat_sparse_upsample_cuda(movie_frames, frame_selection, frame_weights)
 
 
+def batch_flat_sparse_upsample_cuda(batched_movie_frames: torch.Tensor,
+                                    batched_frame_selection: torch.Tensor,
+                                    batched_frame_weights: torch.Tensor) -> torch.Tensor:
+
+    return diff_upsample.upsample_flat_forward(batched_movie_frames,
+                                               batched_frame_selection,
+                                               batched_frame_weights)
+
+
 def flat_sparse_upsample_transpose_cuda(movie_frames: torch.Tensor,
                                         frame_selection: torch.Tensor,
                                         frame_weights: torch.Tensor) -> torch.Tensor:
     return torch_sparse_upsample_cuda.flat_sparse_upsample_transpose_cuda(movie_frames, frame_selection, frame_weights)
+
+
+def batch_flat_sparse_upsample_transpose_cuda(
+        batched_movie_frames: torch.Tensor,
+        batched_frame_selection: torch.Tensor,
+        batched_frame_weights: torch.Tensor) -> torch.Tensor:
+    return diff_upsample.upsample_transpose_flat_forward(
+        batched_movie_frames,
+        batched_frame_selection,
+        batched_frame_weights
+    )
 
 
 class BeamJitterFrame(torch.autograd.Function):
